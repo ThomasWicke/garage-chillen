@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no" />
+    <title>Garage chillen</title>
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <link rel="apple-touch-icon" href="/icon.svg" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Garage" />
+    <meta name="theme-color" content="#0a0a14" />
+    <style>
+      :root {
+        --bg: #0a0a14;
+        --panel: #14141e;
+        --panel-2: #1a1a26;
+        --fg: #d8d8e8;
+        --muted: #7a7a92;
+        --accent: #ff5d8f;
+        --accent-fg: #0a0a14;
+        --border: #2a2a3a;
+        --crown: #ffd05d;
+      }
+      html, body {
+        margin: 0;
+        padding: 0;
+        background: var(--bg);
+        height: 100dvh;
+        overflow: hidden;
+        font-family: system-ui, -apple-system, sans-serif;
+        color: var(--fg);
+        -webkit-tap-highlight-color: transparent;
+        -webkit-user-select: none;
+        user-select: none;
+        touch-action: manipulation;
+        overscroll-behavior: none;
+      }
+      body.in-room {
+        touch-action: none;
+      }
+      #app {
+        width: 100vw;
+        height: 100dvh;
+        padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+        box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+      }
+      h1, h2 { margin: 0; font-weight: 300; letter-spacing: 4px; }
+      h1 { font-size: 36px; }
+      h2 { font-size: 22px; }
+      button {
+        font-family: inherit;
+        cursor: pointer;
+        font-size: 16px;
+        padding: 14px 22px;
+        border-radius: 8px;
+        border: 1px solid var(--border);
+        background: var(--panel);
+        color: var(--fg);
+        letter-spacing: 1px;
+      }
+      button.primary {
+        background: var(--accent);
+        color: var(--accent-fg);
+        border-color: transparent;
+        font-weight: 600;
+      }
+      button:disabled { opacity: 0.4; cursor: not-allowed; }
+      input[type="text"] {
+        font-family: inherit;
+        font-size: 22px;
+        padding: 14px 18px;
+        background: var(--panel-2);
+        color: var(--fg);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        outline: none;
+      }
+      input[type="text"]:focus { border-color: var(--fg); }
+
+      /* Install gate */
+      .install-gate {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 32px;
+        gap: 24px;
+        text-align: center;
+      }
+      .install-gate .logo { font-size: 56px; letter-spacing: 8px; font-weight: 200; }
+      .install-gate .accent { color: var(--accent); }
+      .install-gate p { color: var(--muted); line-height: 1.5; max-width: 320px; }
+      .install-gate .step {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 16px 20px;
+        max-width: 320px;
+        font-size: 14px;
+      }
+      .install-gate .step strong { color: var(--fg); }
+      .install-gate .escape {
+        font-size: 12px;
+        color: var(--muted);
+        text-decoration: underline;
+        background: none;
+        border: none;
+        padding: 0;
+        cursor: pointer;
+      }
+
+      /* Start screen */
+      .start {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        padding: 24px;
+        gap: 20px;
+      }
+      .start .header { text-align: center; padding: 16px 0 8px; }
+      .start .header .title { font-size: 32px; letter-spacing: 6px; font-weight: 200; }
+      .start .header .title .accent { color: var(--accent); }
+      .start .header .subtitle { font-size: 12px; color: var(--muted); letter-spacing: 2px; text-transform: uppercase; margin-top: 4px; }
+      .start .profile { background: var(--panel); border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+      .start .profile label { font-size: 11px; color: var(--muted); letter-spacing: 2px; text-transform: uppercase; }
+      .start .avatar-row { display: flex; gap: 8px; flex-wrap: wrap; }
+      .start .avatar {
+        width: 56px; height: 56px;
+        border-radius: 12px;
+        background: var(--panel-2);
+        border: 2px solid transparent;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 28px;
+        cursor: pointer;
+      }
+      .start .avatar.selected { border-color: var(--accent); }
+      .start .actions { display: flex; flex-direction: column; gap: 12px; margin-top: auto; }
+      .start .or { text-align: center; color: var(--muted); font-size: 11px; letter-spacing: 4px; }
+      .start .join-form { display: flex; gap: 8px; }
+      .start .join-form input {
+        flex: 1;
+        text-align: center;
+        letter-spacing: 8px;
+        text-transform: uppercase;
+        font-family: ui-monospace, SFMono-Regular, monospace;
+      }
+
+      /* Lobby */
+      .lobby {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        padding: 16px;
+        min-height: 0;
+      }
+      .lobby .header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+      .lobby .code-block {
+        display: flex;
+        flex-direction: column;
+      }
+      .lobby .code-block .label { font-size: 10px; color: var(--muted); letter-spacing: 3px; text-transform: uppercase; }
+      .lobby .code-block .code { font-size: 28px; letter-spacing: 8px; font-weight: 600; font-family: ui-monospace, SFMono-Regular, monospace; }
+      .lobby .status { font-size: 11px; color: var(--muted); letter-spacing: 1px; }
+      .lobby .player-list {
+        flex: 1;
+        background: var(--panel);
+        border-radius: 12px;
+        padding: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        overflow-y: auto;
+        min-height: 0;
+      }
+      .lobby .player {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 12px;
+        background: var(--panel-2);
+        border-radius: 8px;
+      }
+      .lobby .player .avatar { font-size: 22px; width: 32px; text-align: center; }
+      .lobby .player .name { flex: 1; }
+      .lobby .player .badge { font-size: 11px; color: var(--muted); letter-spacing: 1px; }
+      .lobby .player.gm .crown { color: var(--crown); }
+      .lobby .player.self .name::after { content: " (you)"; color: var(--muted); font-size: 12px; }
+      .lobby .player.disconnected { opacity: 0.5; }
+      .lobby .gm-controls {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .lobby .gm-controls .hint { font-size: 11px; color: var(--muted); text-align: center; letter-spacing: 1px; }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

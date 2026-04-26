@@ -1,0 +1,26 @@
+{
+  "name": "garage-chillen",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently --names client,party --prefix-colors cyan,magenta \"npm:dev:client\" \"npm:dev:party\"",
+    "dev:client": "vite",
+    "dev:party": "partykit dev",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "deploy:party": "partykit deploy"
+  },
+  "dependencies": {
+    "kaplay": "^3001.0.19",
+    "partysocket": "^1.1.18",
+    "uuid": "^11.0.3"
+  },
+  "devDependencies": {
+    "@types/uuid": "^10.0.0",
+    "concurrently": "^9.2.1",
+    "partykit": "^0.0.115",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.10"
+  }
+}
