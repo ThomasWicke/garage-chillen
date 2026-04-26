@@ -18,10 +18,6 @@ export function renderStart(navigate: (path: string) => void): void {
   const app = document.getElementById("app")!;
   app.innerHTML = `
     <div class="start">
-      <div class="header">
-        <div class="title">Garage <span class="accent">chillen</span></div>
-        <div class="subtitle">multiplayer party games</div>
-      </div>
       <div class="profile">
         <div>
           <label for="nickname">Nickname</label>
@@ -32,7 +28,7 @@ export function renderStart(navigate: (path: string) => void): void {
           <div class="avatar-row" id="avatar-row" style="margin-top: 8px;">
             ${AVATARS.map(
               (a) => `
-              <button class="avatar ${a.id === identity.avatarId ? "selected" : ""}" data-avatar="${a.id}" type="button">${a.emoji}</button>
+              <button class="avatar ${a.id === identity.avatarId ? "selected" : ""}" data-avatar="${a.id}" type="button" title="${escapeAttr(a.name)}"><img src="${a.src}" alt="${escapeAttr(a.name)}" /></button>
             `,
             ).join("")}
           </div>

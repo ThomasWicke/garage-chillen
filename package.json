@@ -12,6 +12,7 @@
     "deploy:party": "partykit deploy"
   },
   "dependencies": {
+    "@kaplayjs/crew": "^2.1.0",
     "kaplay": "^3001.0.19",
     "partysocket": "^1.1.18",
     "uuid": "^11.0.3"

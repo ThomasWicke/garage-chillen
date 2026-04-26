@@ -25,10 +25,11 @@ export class LobbyConnection {
     private handlers: Handlers,
   ) {
     this.handlers.onStatus("connecting");
+    // In dev: use the same host:port as the page (Vite proxies /parties/* to
+    // PartyKit on :1999). In prod: VITE_PARTYKIT_HOST points to the deployed
+    // partykit.dev URL.
     this.socket = new PartySocket({
-      host:
-        import.meta.env.VITE_PARTYKIT_HOST ||
-        `${window.location.hostname}:1999`,
+      host: import.meta.env.VITE_PARTYKIT_HOST || window.location.host,
       room: this.code,
     });
 

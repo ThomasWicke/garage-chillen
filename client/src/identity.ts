@@ -1,22 +1,54 @@
 // Persistent local identity. UUID is generated once and never changes (until
 // the user clears storage). Nickname & avatar are also persisted across visits.
+//
+// Avatars are sourced from the @kaplayjs/crew package, whose asset entries
+// expose a `.sprite` data-URI suitable for both <img> tags and Kaplay's
+// loadSprite. This keeps the same avatar set in sync between the DOM lobby UI
+// and the Kaplay-rendered mini-game scenes.
 
 import { v4 as uuidv4 } from "uuid";
+import type { CrewAsset, SpriteCrewItem } from "@kaplayjs/crew";
+import {
+  bagData,
+  beanData,
+  boboData,
+  ghostyData,
+  gigagantrumData,
+  gladyData,
+  katData,
+  markData,
+  marrocData,
+  sukomiData,
+} from "@kaplayjs/crew";
 
-export type Avatar = { id: string; emoji: string };
+export type Avatar = { id: string; src: string; name: string };
 
-// MVP: simple emoji-based avatars for the DOM lobby UI. Mini-game scenes will
-// later map these `id`s to Kaplay sprites.
-export const AVATARS: readonly Avatar[] = [
-  { id: "bean", emoji: "🫘" },
-  { id: "ghosty", emoji: "👻" },
-  { id: "dino", emoji: "🦖" },
-  { id: "dog", emoji: "🐶" },
-  { id: "cat", emoji: "🐱" },
-  { id: "robot", emoji: "🤖" },
-  { id: "alien", emoji: "👽" },
-  { id: "frog", emoji: "🐸" },
-];
+// All entries are statically known to be sprites; narrow the CrewAsset union.
+function sprite(d: CrewAsset): SpriteCrewItem & { pack: string } {
+  if (d.kind !== "Sprite") {
+    throw new Error(`Crew asset ${d.name} is not a sprite`);
+  }
+  return d as SpriteCrewItem & { pack: string };
+}
+
+export const AVATARS: readonly Avatar[] = (
+  [
+    ["bean", beanData],
+    ["ghosty", ghostyData],
+    ["mark", markData],
+    ["kat", katData],
+    ["bag", bagData],
+    ["marroc", marrocData],
+    ["bobo", boboData],
+    ["glady", gladyData],
+    ["sukomi", sukomiData],
+    ["gigagantrum", gigagantrumData],
+  ] as const
+).map(([id, data]) => {
+  const s = sprite(data);
+  // Always use the outlined variant — looks crisper on dark backgrounds.
+  return { id, src: s.outlined, name: s.name };
+});
 
 export type Identity = {
   playerId: string;
@@ -58,6 +90,6 @@ export function ensureIdentity(): Identity {
   return fresh;
 }
 
-export function avatarEmoji(avatarId: string): string {
-  return AVATARS.find((a) => a.id === avatarId)?.emoji ?? "❔";
+export function avatarSrc(avatarId: string): string {
+  return AVATARS.find((a) => a.id === avatarId)?.src ?? AVATARS[0].src;
 }

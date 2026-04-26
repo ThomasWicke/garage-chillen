@@ -1,35 +1,36 @@
-// Pure DOM rendering for the lobby. State-in, HTML-out. Phase 1 only shows
-// player list + GM marker + connection status; mini-game launching comes in
-// Phase 2.
+// DOM rendering for the lobby (idle state). Shows player list, GM-only
+// minigame launch buttons, and connection status.
 
-import { avatarEmoji } from "../identity";
-import type { LobbyState, PublicPlayer } from "../../../party/protocol";
+import { starData } from "@kaplayjs/crew";
+import { avatarSrc } from "../identity";
+import type {
+  MiniGameInfo,
+  PublicPlayer,
+} from "../../../party/protocol";
+
+const STAR_SRC = starData.kind === "Sprite" ? starData.outlined : "";
 
 export type LobbyViewState = {
-  code: string;
-  status: "connecting" | "open" | "closed";
   selfPlayerId: string | null;
   players: PublicPlayer[];
   gmPlayerId: string | null;
-  gmGraceUntil: number | null;
-  lobbyState: LobbyState;
+  availableMinigames: MiniGameInfo[];
 };
 
-export function renderLobbyView(s: LobbyViewState, container: HTMLElement): void {
+export type LobbyViewHandlers = {
+  onStartRound: (minigameId: string) => void;
+};
+
+export function renderLobbyView(
+  s: LobbyViewState,
+  container: HTMLElement,
+  handlers: LobbyViewHandlers,
+): void {
   const isSelfGm = !!s.selfPlayerId && s.gmPlayerId === s.selfPlayerId;
-  const graceMsLeft =
-    s.gmGraceUntil !== null ? Math.max(0, s.gmGraceUntil - Date.now()) : 0;
-  const inGmGrace = graceMsLeft > 0;
+  const connectedCount = s.players.filter((p) => p.connected).length;
 
   container.innerHTML = `
     <div class="lobby">
-      <div class="header">
-        <div class="code-block">
-          <span class="label">Lobby</span>
-          <span class="code">${s.code}</span>
-        </div>
-        <span class="status">${statusText(s.status, inGmGrace, graceMsLeft)}</span>
-      </div>
       <div class="player-list">
         ${
           s.players.length === 0
@@ -40,11 +41,48 @@ export function renderLobbyView(s: LobbyViewState, container: HTMLElement): void
       <div class="gm-controls">
         ${
           isSelfGm
-            ? `<div class="hint">you are the Game Master · mini-game launching coming next</div>`
+            ? renderGmControls(s.availableMinigames, connectedCount)
             : `<div class="hint">waiting for the Game Master…</div>`
         }
       </div>
     </div>
+  `;
+
+  if (isSelfGm) {
+    container.querySelectorAll<HTMLButtonElement>("[data-start-minigame]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const id = btn.dataset.startMinigame!;
+        handlers.onStartRound(id);
+      });
+    });
+  }
+}
+
+function renderGmControls(minigames: MiniGameInfo[], connectedCount: number): string {
+  if (minigames.length === 0) {
+    return `<div class="hint">no mini-games available</div>`;
+  }
+  const buttons = minigames
+    .map((m) => {
+      // Phase 2: gate strictly on min/max range. Bracket-mode (Phase 3) will
+      // unlock 1v1 mini-games for N>2.
+      const ok = connectedCount >= m.minPlayers && connectedCount <= m.maxPlayers;
+      const reason = ok
+        ? ""
+        : connectedCount < m.minPlayers
+          ? `needs ${m.minPlayers}+ players`
+          : `max ${m.maxPlayers} players`;
+      return `
+        <button class="primary mg-btn" data-start-minigame="${m.id}" ${ok ? "" : "disabled"}>
+          <span class="mg-name">${escapeHtml(m.displayName)}</span>
+          ${reason ? `<span class="mg-reason">${escapeHtml(reason)}</span>` : ""}
+        </button>
+      `;
+    })
+    .join("");
+  return `
+    <div class="hint">you are the Game Master · pick a mini-game to start a round</div>
+    <div class="mg-list">${buttons}</div>
   `;
 }
 
@@ -55,25 +93,14 @@ function renderPlayer(p: PublicPlayer, selfPlayerId: string | null): string {
   if (!p.connected) classes.push("disconnected");
   return `
     <div class="${classes.join(" ")}">
-      <span class="avatar">${avatarEmoji(p.avatarId)}</span>
+      <span class="avatar"><img src="${avatarSrc(p.avatarId)}" alt="" /></span>
       <span class="name">${escapeHtml(p.nickname)}</span>
       <span class="badge">
-        ${p.isGm ? `<span class="crown">👑 GM</span>` : ""}
-        ${!p.connected ? "offline" : ""}
+        ${p.isGm ? `<img class="gm-star" src="${STAR_SRC}" alt="GM" />` : ""}
+        ${!p.connected ? `<span class="offline-tag">offline</span>` : ""}
       </span>
     </div>
   `;
-}
-
-function statusText(
-  status: "connecting" | "open" | "closed",
-  inGmGrace: boolean,
-  graceMsLeft: number,
-): string {
-  if (status === "connecting") return "connecting…";
-  if (status === "closed") return "reconnecting…";
-  if (inGmGrace) return `GM grace ${Math.ceil(graceMsLeft / 1000)}s`;
-  return "connected";
 }
 
 function escapeHtml(s: string): string {
