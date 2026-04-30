@@ -1,6 +1,11 @@
-// Pong (portrait) client. Renders the canonical state from the server in a
-// Kaplay scene, with a per-player view flip so each participant's own paddle
-// appears at the bottom of their phone — but the wire format stays canonical.
+// Pong (portrait) match client. Renders the canonical state from the server
+// in a Kaplay scene, with a per-player view flip so each participant's own
+// paddle appears at the bottom of their phone — but the wire format stays
+// canonical.
+//
+// This is invoked by the tournament gamemode client when the local player
+// is in an active Pong match. Spectator state has moved up: non-participants
+// see the bracket overlay instead of a Pong scene.
 
 import kaplay from "kaplay";
 import type {
@@ -12,14 +17,14 @@ import type {
 } from "kaplay";
 import { registerMiniGameClient } from "../registry";
 import type {
-  MiniGameClientContext,
+  MatchClientContext,
+  MatchClientSession,
   MiniGameClientDefinition,
-  MiniGameClientSession,
 } from "../types";
 
 type Sprite = GameObj<PosComp | RectComp | ColorComp | AnchorComp>;
 
-type Role = "p1" | "p2" | "spectator";
+type Role = "p1" | "p2";
 
 type WelcomeMsg = {
   type: "welcome";
@@ -28,6 +33,7 @@ type WelcomeMsg = {
   paddle: { w: number; h: number };
   ball: number;
   firstTo: number;
+  deadlineAt: number;
   opponent?: { playerId: string; nickname: string; avatarId: string };
 };
 
@@ -37,17 +43,13 @@ type StateMsg = {
   paddles: { p1: number; p2: number };
   scores: { p1: number; p2: number };
   running: boolean;
+  deadlineAt: number;
 };
 
-const PADDLE_Y_TOP_RATIO = 40 / 800; // matches server constants
+const PADDLE_Y_TOP_RATIO = 40 / 800;
 const PADDLE_Y_BOTTOM_RATIO = (800 - 40) / 800;
 
-function createPongClientSession(
-  ctx: MiniGameClientContext,
-): MiniGameClientSession {
-  // The universal session toolbar (above the mini-game container) renders
-  // the mini-game name + match score via ctx.setMatchScore. Pong's container
-  // is the play field + a small status footer; nothing more.
+function createPongMatchClient(ctx: MatchClientContext): MatchClientSession {
   ctx.container.innerHTML = `
     <div class="pong">
       <div class="pong-stage" id="pong-stage"></div>
@@ -58,7 +60,7 @@ function createPongClientSession(
   const stageEl = ctx.container.querySelector<HTMLElement>("#pong-stage")!;
   const statusEl = ctx.container.querySelector<HTMLElement>("#pong-status")!;
 
-  let role: Role = "spectator";
+  let role: Role | null = null;
   let fieldW = 500;
   let fieldH = 800;
   let paddleW = 90;
@@ -75,18 +77,12 @@ function createPongClientSession(
   let lastSentX = -1;
   let lastSentAt = 0;
 
-  // ─── view flip ─────────────────────────────────────────────────────────
-  // Player p1 controls the canonical-top paddle. To put their own paddle at
-  // the bottom of their phone, we flip Y (and X to keep "drag right" meaning
-  // the same canonical direction). Player p2 sees canonical orientation.
   function flipY(y: number): number {
     return role === "p1" ? fieldH - y : y;
   }
   function flipX(x: number): number {
     return role === "p1" ? fieldW - x : x;
   }
-  // Convert a Kaplay-touch X (in display coords) back to canonical X for the
-  // wire. flipX is its own inverse.
   const touchToCanonicalX = flipX;
 
   function buildScene() {
@@ -101,7 +97,6 @@ function createPongClientSession(
       touchToMouse: false,
     });
 
-    // Center net: short ticks across the middle.
     const NET_SEGMENTS = 16;
     const segW = fieldW / NET_SEGMENTS;
     for (let i = 0; i < NET_SEGMENTS; i++) {
@@ -134,7 +129,6 @@ function createPongClientSession(
       k.color(240, 240, 240),
     ]);
 
-    // Touch input → set canonical paddle X, throttle wire updates to ~30 Hz.
     function onTouch(pos: { x: number; y: number }) {
       if (role !== "p1" && role !== "p2") return;
       const canonicalX = touchToCanonicalX(pos.x);
@@ -151,7 +145,6 @@ function createPongClientSession(
 
     k.onUpdate(() => {
       if (role !== "p1" && role !== "p2") return;
-      // Locally render own paddle without waiting for server echo.
       const ownDisplayX = flipX(myPaddleX);
       const ownDisplayY = flipY(
         role === "p1" ? fieldH * PADDLE_Y_TOP_RATIO : fieldH * PADDLE_Y_BOTTOM_RATIO,
@@ -172,13 +165,10 @@ function createPongClientSession(
 
   function applyState(msg: StateMsg) {
     if (!leftPaddle || !rightPaddle || !ball) return;
-    // Server state is canonical: paddles.p1 → top, paddles.p2 → bottom.
     const p1DisplayX = flipX(msg.paddles.p1);
     const p1DisplayY = flipY(fieldH * PADDLE_Y_TOP_RATIO);
     const p2DisplayX = flipX(msg.paddles.p2);
     const p2DisplayY = flipY(fieldH * PADDLE_Y_BOTTOM_RATIO);
-    // For self, prefer locally-predicted X (handled in onUpdate); for the
-    // opponent/spectator paddles, follow server.
     if (role !== "p1") {
       leftPaddle.pos.x = p1DisplayX;
       leftPaddle.pos.y = p1DisplayY;
@@ -190,14 +180,11 @@ function createPongClientSession(
     ball.pos.x = flipX(msg.ball.x);
     ball.pos.y = flipY(msg.ball.y);
 
-    // Push the match score to the universal toolbar from the player's
-    // perspective (own score on the left).
     const myScore = role === "p2" ? msg.scores.p2 : msg.scores.p1;
     const theirScore = role === "p2" ? msg.scores.p1 : msg.scores.p2;
     ctx.setMatchScore(`${myScore} – ${theirScore}`);
 
-    statusEl.textContent =
-      role === "spectator" ? "spectating" : msg.running ? "" : "round over";
+    statusEl.textContent = msg.running ? "" : "round over";
   }
 
   function applyWelcome(msg: WelcomeMsg) {
@@ -208,10 +195,7 @@ function createPongClientSession(
     paddleH = msg.paddle.h;
     ballSize = msg.ball;
     myPaddleX = fieldW / 2;
-    statusEl.textContent =
-      role === "spectator"
-        ? "spectating"
-        : `playing as ${role.toUpperCase()} · first to ${msg.firstTo}`;
+    statusEl.textContent = `playing as ${role.toUpperCase()} · first to ${msg.firstTo}`;
     buildScene();
   }
 
@@ -227,7 +211,7 @@ function createPongClientSession(
       try {
         k?.quit();
       } catch {
-        // ignore
+        /* ignore */
       }
       k = null;
       leftPaddle = null;
@@ -240,7 +224,7 @@ function createPongClientSession(
 
 const PongClient: MiniGameClientDefinition = {
   id: "pong",
-  createSession: createPongClientSession,
+  createMatch: createPongMatchClient,
 };
 
 registerMiniGameClient(PongClient);

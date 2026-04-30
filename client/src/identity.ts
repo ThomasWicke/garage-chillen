@@ -93,3 +93,24 @@ export function ensureIdentity(): Identity {
 export function avatarSrc(avatarId: string): string {
   return AVATARS.find((a) => a.id === avatarId)?.src ?? AVATARS[0].src;
 }
+
+/**
+ * Pick the next avatar id in fixed AVATARS order, skipping any avatars
+ * already taken by other players, unless the registry is at or above
+ * capacity (in which case duplicates are allowed). Returns the same id if
+ * no rotation is possible.
+ */
+export function nextAvatarId(
+  currentId: string,
+  takenByOthers: ReadonlySet<string>,
+  totalPlayers: number,
+): string {
+  const allowDuplicates = totalPlayers >= AVATARS.length;
+  const startIdx = AVATARS.findIndex((a) => a.id === currentId);
+  const start = startIdx >= 0 ? startIdx : 0;
+  for (let i = 1; i <= AVATARS.length; i++) {
+    const candidate = AVATARS[(start + i) % AVATARS.length].id;
+    if (allowDuplicates || !takenByOthers.has(candidate)) return candidate;
+  }
+  return currentId;
+}

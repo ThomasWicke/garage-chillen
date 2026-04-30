@@ -14,11 +14,15 @@ export function renderRoundResultsView(
     players: PublicPlayer[];
     selfPlayerId: string | null;
     isGm: boolean;
+    /** Server time (ms) when the round-results screen auto-dismisses. */
+    dismissAt: number;
   },
   container: HTMLElement,
   handlers: RoundResultsHandlers,
 ): void {
-  const { result, players, selfPlayerId, isGm } = args;
+  const { result, players, selfPlayerId, isGm, dismissAt } = args;
+  const remainingSec =
+    dismissAt > 0 ? Math.max(0, Math.ceil((dismissAt - Date.now()) / 1000)) : 0;
   // Sort participants by points desc.
   const rows = result.participants
     .map((id) => ({
@@ -46,7 +50,11 @@ export function renderRoundResultsView(
           .join("")}
       </div>
       <div class="results-actions">
-        ${isGm ? `<button class="primary" id="back-btn">back to lobby</button>` : `<div class="hint">returning to lobby…</div>`}
+        ${
+          isGm
+            ? `<button class="primary" id="back-btn">back to lobby</button>`
+            : `<div class="hint">returning to lobby in ${remainingSec}…</div>`
+        }
       </div>
     </div>
   `;

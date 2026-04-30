@@ -1,6 +1,7 @@
-// Client-side mini-game interface. Mirrors the server's MiniGameDefinition /
-// MiniGameSession split: a definition with metadata + createSession factory,
-// and a session that handles incoming messages / cleans up.
+// Mini-game client interface. Mirrors the server: a definition with metadata
+// + a createMatch factory. The gamemode client mounts a match client when a
+// match is active for the local player; the match client handles only its
+// own match's traffic (welcome, state, fire, etc.).
 
 export type MiniGameClientPlayer = {
   playerId: string;
@@ -8,34 +9,30 @@ export type MiniGameClientPlayer = {
   avatarId: string;
 };
 
-export type MiniGameClientContext = {
-  /** DOM element to mount the mini-game's canvas/UI into. */
+export type MatchClientContext = {
+  /** DOM element to mount the match's canvas/UI into. */
   container: HTMLElement;
+  /** Unique id of this specific match. */
+  matchId: string;
   /** Own playerId. */
   selfPlayerId: string;
-  /** Player IDs participating this round (others are spectators). */
-  participants: string[];
-  /** All known players in the lobby (for nickname/avatar lookup). */
-  allPlayers: MiniGameClientPlayer[];
-  /** Send a scope: "minigame" message to the server. */
+  /** Match participants (matchSize of them). */
+  participants: MiniGameClientPlayer[];
+  /** Send a `scope: "minigame"` match-targeted message, automatically tagged
+   *  with `target: "match"` and this matchId by the gamemode wrapper. */
   send: (msg: { type: string; [k: string]: unknown }) => void;
-  /**
-   * Push the current match score (or any short status) to the universal
-   * session toolbar. Pass null to clear. The mini-game label itself is
-   * already shown by the toolbar via the registered MiniGameInfo — this
-   * slot is for live, mini-game-specific info such as "3 – 1".
-   */
+  /** Push current match score to the universal session toolbar. Pass null to clear. */
   setMatchScore: (text: string | null) => void;
 };
 
-export type MiniGameClientSession = {
-  /** Server delivered a `scope: "minigame"` message — pass it to the session. */
+export type MatchClientSession = {
+  /** Server delivered a match-targeted minigame msg with this matchId. */
   onMessage: (msg: { type: string; [k: string]: unknown }) => void;
-  /** Called when the round ends or the player navigates away. */
+  /** Match ended or local player navigated away. */
   unmount: () => void;
 };
 
 export type MiniGameClientDefinition = {
   id: string;
-  createSession: (ctx: MiniGameClientContext) => MiniGameClientSession;
+  createMatch: (ctx: MatchClientContext) => MatchClientSession;
 };

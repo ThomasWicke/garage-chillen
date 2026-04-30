@@ -1,44 +1,35 @@
-// LobbyServer — one instance per lobby code. Owns identity, GM role, and the
-// active round (with optional bracket). Keys players by `playerId` so refresh
-// / lost-wifi / closed-tab all reconnect cleanly to the same slot.
+// LobbyServer — one instance per lobby code. Owns identity, GM role, lobby
+// state machine, and one active gamemode session per round. Keys players by
+// `playerId` so refresh / lost-wifi / closed-tab all reconnect cleanly.
 //
 // Lobby state machine:
-//   idle → preparing → playing (one or more matches) → round-results → idle
+//   idle → preparing → playing (one gamemode session) → round-results → idle
 //
-// For format: "1v1" mini-games the lobby orchestrates a single-elimination
-// bracket across all connected lobby players. The mini-game is instantiated
-// once per match in the bracket, with a brief intermission between matches.
-// For format: "ffa" mini-games the round is a single session.
+// All competitive structure (brackets, parallel matches, intros) lives in
+// the gamemode wrapper (party/gamemodes/). The lobby just dispatches.
 
 import type * as Party from "partykit/server";
-import {
-  buildBracket,
-  isComplete,
-  nextMatch,
-  placements,
-  placementsToPoints,
-  recordMatchResult,
-  type Bracket,
-  type BracketMatch,
-} from "./bracket";
 import { PlayerRegistry, type PlayerRecord } from "./identity";
 import { allMiniGames, getMiniGame } from "./minigames";
+import "./gamemodes"; // self-register tournament etc.
+import { getGamemode } from "./gamemodes/registry";
 import type {
-  MiniGameContext,
+  GamemodeContext,
+  GamemodeSession,
   MiniGamePlayer,
-  MiniGameSession,
-} from "./minigames/types";
+} from "./gamemodes/types";
 import type {
   AvailableMiniGamesMsg,
   ClientToServer,
+  EditRejectedMsg,
   IdentifyMsg,
   LobbyState,
   LobbyStateMsg,
   MiniGameInfo,
   MiniGameMsg,
   PlayerListMsg,
-  PublicBracket,
   RoundResult,
+  SequencePublicState,
   ServerToClient,
   SessionStateMsg,
   WelcomeMsg,
@@ -46,25 +37,28 @@ import type {
 
 const GM_GRACE_MS = 30_000;
 const PREPARE_COUNTDOWN_MS = 3_000;
-const ROUND_RESULTS_AUTO_DISMISS_MS = 15_000;
-const INTERMISSION_MS = 3_000;
+const ROUND_RESULTS_AUTO_DISMISS_MS = 8_000;
+const ROUND_RESULTS_AUTO_DISMISS_SHUFFLE_MS = 4_000;
+const SEQUENCE_AUTOSTART_MS = 7_000;
+
+type SequenceState = {
+  /** Original (full) shuffle plan; unchanged for the run. Used to compute
+   *  total/index/remaining for the public state. */
+  plan: string[];
+  /** Index of the next mini-game to start. Advances after each scheduling. */
+  cursor: number;
+  paused: boolean;
+  /** Set while waiting in the inter-round lobby window. */
+  autoStartAt: number | null;
+  autoStartTimer: ReturnType<typeof setTimeout> | null;
+};
 
 type ActiveRound = {
   minigameId: string;
-  format: "1v1" | "ffa";
-  /** Random seed of bracket participants (full lobby for 1v1; single match for FFA). */
-  bracket: Bracket | null;
-  /** Match summary across the round, accumulated as matches finish. Used for round summary. */
-  matchSummaries: string[];
-  /** Currently-active match (for 1v1) or the synthetic single FFA match. */
-  currentMatchId: string | null;
-  currentParticipants: MiniGamePlayer[];
-  session: MiniGameSession | null;
+  gamemodeId: string;
+  session: GamemodeSession;
   tickHandle: ReturnType<typeof setInterval> | null;
   lastTickAt: number;
-  /** While > Date.now(): no match is active; clients show an intermission. */
-  intermissionUntil: number | null;
-  intermissionTimer: ReturnType<typeof setTimeout> | null;
   ended: boolean;
 };
 
@@ -81,7 +75,9 @@ export default class LobbyServer implements Party.Server {
   private prepareMinigameId = "";
   private lastResult: RoundResult | null = null;
   private resultsAutoDismissTimer: ReturnType<typeof setTimeout> | null = null;
+  private resultsDismissAt: number = 0;
   private sessionScores: Record<string, number> = {};
+  private sequence: SequenceState | null = null;
 
   constructor(readonly room: Party.Room) {}
 
@@ -105,14 +101,40 @@ export default class LobbyServer implements Party.Server {
         case "set-nickname": {
           const player = this.registry.getByConnection(sender.id);
           if (!player) return;
-          this.registry.setNickname(player.playerId, msg.nickname);
+          if (!this.isEditEligible()) {
+            this.send<EditRejectedMsg>(sender, {
+              scope: "presence",
+              type: "edit-rejected",
+              field: "nickname",
+              reason: "not-allowed",
+            });
+            return;
+          }
+          const result = this.registry.setNicknameStrict(
+            player.playerId,
+            msg.nickname,
+          );
+          if (!result.ok) {
+            this.send<EditRejectedMsg>(sender, {
+              scope: "presence",
+              type: "edit-rejected",
+              field: "nickname",
+              reason: result.reason,
+            });
+            return;
+          }
           this.broadcastPlayerList();
           return;
         }
         case "set-avatar": {
           const player = this.registry.getByConnection(sender.id);
           if (!player) return;
-          this.registry.setAvatar(player.playerId, msg.avatarId);
+          if (!this.isEditEligible()) {
+            // Re-broadcast so the client reverts any optimistic update.
+            this.broadcastPlayerList();
+            return;
+          }
+          this.registry.setAvatarRotated(player.playerId, msg.avatarId);
           this.broadcastPlayerList();
           return;
         }
@@ -126,10 +148,25 @@ export default class LobbyServer implements Party.Server {
       const isGm = player.playerId === this.gmPlayerId;
       if (msg.type === "start-round") {
         if (!isGm) return;
+        // Manual GM pick cancels any active sequence.
+        this.endSequence();
         this.requestStartRound(msg.minigameId);
       } else if (msg.type === "back-to-lobby") {
         if (!isGm) return;
         this.transitionToIdle();
+      } else if (msg.type === "start-shuffle") {
+        if (!isGm) return;
+        this.startShuffle();
+      } else if (msg.type === "pause-sequence") {
+        if (!isGm) return;
+        this.pauseSequence();
+      } else if (msg.type === "resume-sequence") {
+        if (!isGm) return;
+        this.resumeSequence();
+      } else if (msg.type === "end-sequence") {
+        if (!isGm) return;
+        this.endSequence();
+        this.broadcastLobbyState();
       }
       return;
     }
@@ -138,7 +175,11 @@ export default class LobbyServer implements Party.Server {
       if (this.state !== "playing" || !this.active?.session) return;
       const player = this.registry.getByConnection(sender.id);
       if (!player) return;
-      this.active.session.onMessage(player.playerId, msg as MiniGameMsg);
+      if (msg.target === "match" && typeof msg.matchId === "string") {
+        this.active.session.onMatchMessage(player.playerId, msg.matchId, msg);
+      } else if (msg.target === "gamemode") {
+        this.active.session.onGamemodeMessage?.(player.playerId, msg);
+      }
       return;
     }
   }
@@ -146,9 +187,6 @@ export default class LobbyServer implements Party.Server {
   onClose(conn: Party.Connection) {
     const player = this.registry.disconnect(conn.id);
     if (!player) return;
-    console.log(
-      `[lobby] onClose: ${player.nickname} (${player.playerId.slice(0, 4)}), state=${this.state}`,
-    );
     if (player.playerId === this.gmPlayerId) {
       this.startGmGrace();
     }
@@ -187,9 +225,11 @@ export default class LobbyServer implements Party.Server {
       minigames: allMiniGames().map<MiniGameInfo>((m) => ({
         id: m.id,
         displayName: m.displayName,
+        gamemode: m.gamemode,
+        matchSize: m.matchSize,
         minPlayers: m.minPlayers,
         maxPlayers: m.maxPlayers,
-        format: m.format,
+        shuffleWeight: m.shuffleWeight ?? 1,
       })),
     });
     this.send<SessionStateMsg>(sender, {
@@ -239,11 +279,10 @@ export default class LobbyServer implements Party.Server {
     if (this.state !== "idle") return;
     const def = getMiniGame(minigameId);
     if (!def) return;
+    const gm = getGamemode(def.gamemode);
+    if (!gm) return;
 
     const lobbyPlayers = this.lobbyPlayersForMinigame();
-    console.log(
-      `[lobby] requestStartRound: ${minigameId}, lobbyPlayers=${lobbyPlayers.length}, minP=${def.minPlayers}, maxP=${def.maxPlayers}`,
-    );
     if (lobbyPlayers.length < def.minPlayers) return;
     if (lobbyPlayers.length > def.maxPlayers) return;
 
@@ -266,6 +305,11 @@ export default class LobbyServer implements Party.Server {
       this.transitionToIdle();
       return;
     }
+    const gm = getGamemode(def.gamemode);
+    if (!gm) {
+      this.transitionToIdle();
+      return;
+    }
 
     const lobbyPlayers = this.lobbyPlayersForMinigame();
     if (lobbyPlayers.length < def.minPlayers) {
@@ -274,283 +318,121 @@ export default class LobbyServer implements Party.Server {
     }
 
     this.state = "playing";
-
-    if (def.format === "1v1") {
-      // Build the bracket from all connected lobby players.
-      const bracket = buildBracket(lobbyPlayers.map((p) => p.playerId));
-      this.active = {
-        minigameId: def.id,
-        format: "1v1",
-        bracket,
-        matchSummaries: [],
-        currentMatchId: null,
-        currentParticipants: [],
-        session: null,
-        tickHandle: null,
-        lastTickAt: 0,
-        intermissionUntil: null,
-        intermissionTimer: null,
-        ended: false,
-      };
-      this.startNextMatchOrFinalize();
-      return;
-    }
-
-    // FFA path: single match with whatever pickParticipants returns.
-    const participants = def.pickParticipants(lobbyPlayers);
-    if (participants.length < def.minPlayers) {
-      this.transitionToIdle();
-      return;
-    }
+    // Broadcast playing state BEFORE creating gamemode session so clients
+    // have the gamemode client mounted when the gamemode emits its first
+    // bracket-state / welcome messages.
     this.active = {
       minigameId: def.id,
-      format: "ffa",
-      bracket: null,
-      matchSummaries: [],
-      currentMatchId: "ffa",
-      currentParticipants: participants,
-      session: null,
+      gamemodeId: gm.id,
+      session: null as unknown as GamemodeSession, // filled below
       tickHandle: null,
       lastTickAt: 0,
-      intermissionUntil: null,
-      intermissionTimer: null,
       ended: false,
     };
-    this.startMatch(participants);
-  }
-
-  /**
-   * Kick off the next bracket match, or finalize the round if the bracket is
-   * complete. For FFA rounds this is never called (the single match is started
-   * directly in transitionToPlaying).
-   */
-  private startNextMatchOrFinalize() {
-    if (!this.active || this.active.ended) return;
-
-    const bracket = this.active.bracket;
-    if (!bracket) {
-      console.log("[lobby] startNextMatchOrFinalize: no bracket → finalize");
-      this.finalizeRound();
-      return;
-    }
-
-    console.log(
-      `[lobby] startNextMatchOrFinalize: bracket matches=${bracket.matches
-        .map((m) => `${m.matchId}(a=${m.a?.slice(0, 4) ?? "_"} b=${m.b?.slice(0, 4) ?? "_"} w=${m.winner?.slice(0, 4) ?? "_"})`)
-        .join(",")}`,
-    );
-
-    if (isComplete(bracket)) {
-      console.log("[lobby] bracket complete → finalize");
-      this.finalizeRound();
-      return;
-    }
-
-    const next = nextMatch(bracket);
-    if (!next) {
-      console.log("[lobby] no next match → finalize");
-      this.finalizeRound();
-      return;
-    }
-    console.log(`[lobby] next match: ${next.matchId}`);
-
-    // Resolve player records for the match.
-    const aRec = next.a ? this.registry.getByPlayerId(next.a) : null;
-    const bRec = next.b ? this.registry.getByPlayerId(next.b) : null;
-
-    // Disconnected participant → forfeit immediately.
-    const aOk = !!aRec?.connectionId;
-    const bOk = !!bRec?.connectionId;
-    if (next.a && next.b && (!aOk || !bOk)) {
-      const survivor = aOk ? next.a : bOk ? next.b : null;
-      if (survivor) {
-        recordMatchResult(bracket, next.matchId, survivor);
-        this.active.matchSummaries.push(`${this.nick(survivor)} wins by forfeit`);
-        this.broadcastLobbyState();
-        this.startNextMatchOrFinalize();
-        return;
-      }
-      // Both gone: skip to finalize.
-      this.finalizeRound();
-      return;
-    }
-
-    if (!next.a || !next.b || !aRec || !bRec) {
-      // Defensive: shouldn't happen because nextMatch only returns matches
-      // with both slots filled. Skip and finalize.
-      this.finalizeRound();
-      return;
-    }
-
-    const participants: MiniGamePlayer[] = [
-      {
-        playerId: aRec.playerId,
-        nickname: aRec.nickname,
-        avatarId: aRec.avatarId,
-      },
-      {
-        playerId: bRec.playerId,
-        nickname: bRec.nickname,
-        avatarId: bRec.avatarId,
-      },
-    ];
-
-    this.active.currentMatchId = next.matchId;
-    this.active.currentParticipants = participants;
-    this.active.intermissionUntil = null;
-
-    this.startMatch(participants);
-  }
-
-  /** Create the mini-game session for the current match and broadcast state. */
-  private startMatch(participants: MiniGamePlayer[]) {
-    if (!this.active) return;
-    const def = getMiniGame(this.active.minigameId);
-    if (!def) {
-      this.transitionToIdle();
-      return;
-    }
-
-    // Broadcast the "playing" state BEFORE createSession so clients have the
-    // mini-game client mounted when welcome messages arrive.
     this.broadcastLobbyState();
 
-    const ctx: MiniGameContext = {
-      players: participants,
-      allPlayers: this.lobbyPlayersForMinigame(),
-      broadcast: (m) => {
-        const wire: MiniGameMsg = { scope: "minigame", ...m };
+    const ctx: GamemodeContext = {
+      lobbyPlayers,
+      miniGame: def,
+      broadcastGamemode: (m) => {
+        const wire: MiniGameMsg = {
+          scope: "minigame",
+          target: "gamemode",
+          ...m,
+        };
         this.room.broadcast(JSON.stringify(wire));
       },
-      sendTo: (playerId, m) => {
+      sendGamemode: (playerId, m) => {
         const conn = this.connectionFor(playerId);
         if (!conn) return;
-        const wire: MiniGameMsg = { scope: "minigame", ...m };
+        const wire: MiniGameMsg = {
+          scope: "minigame",
+          target: "gamemode",
+          ...m,
+        };
         conn.send(JSON.stringify(wire));
       },
-      endRound: ({ scores, summary }) =>
-        this.completeMatch({ scores, summary }),
-      setClickerAvailable: (_pid, _avail) => {
-        // Phase 6 wires this through to the clicker subsystem; no-op for now.
+      broadcastMatch: (matchId, recipientIds, m) => {
+        const wire: MiniGameMsg = {
+          scope: "minigame",
+          target: "match",
+          matchId,
+          ...m,
+        };
+        const payload = JSON.stringify(wire);
+        for (const pid of recipientIds) {
+          const conn = this.connectionFor(pid);
+          if (conn) conn.send(payload);
+        }
       },
-      log: (...args) => console.log(`[${def.id}]`, ...args),
+      sendMatch: (matchId, playerId, m) => {
+        const conn = this.connectionFor(playerId);
+        if (!conn) return;
+        const wire: MiniGameMsg = {
+          scope: "minigame",
+          target: "match",
+          matchId,
+          ...m,
+        };
+        conn.send(JSON.stringify(wire));
+      },
+      endRound: ({ points, summary, participants }) =>
+        this.completeRound({ points, summary, participants }),
+      setClickerAvailable: (_pid, _avail) => {
+        // Phase 6 wires this through; no-op for now.
+      },
+      log: (...args) =>
+        console.log(`[${gm.id}/${def.id}]`, ...args),
     };
 
-    const session = def.createSession(ctx);
-    const tickHz = def.tickHz ?? 0;
+    const session = gm.createSession(ctx);
+    this.active.session = session;
+
+    const tickHz = Math.max(gm.tickHz, def.tickHz);
     let tickHandle: ReturnType<typeof setInterval> | null = null;
-    if (tickHz > 0 && session.tick) {
+    if (tickHz > 0) {
       tickHandle = setInterval(
         () => this.tickActive(),
         Math.max(8, Math.floor(1000 / tickHz)),
       );
     }
-    this.active.session = session;
     this.active.tickHandle = tickHandle;
     this.active.lastTickAt = Date.now();
   }
 
   private tickActive() {
-    if (!this.active || this.active.ended || !this.active.session) return;
+    if (!this.active || this.active.ended) return;
     const now = Date.now();
     const dt = Math.min(0.1, (now - this.active.lastTickAt) / 1000);
     this.active.lastTickAt = now;
     this.active.session.tick?.(dt);
   }
 
-  /** Mini-game called endRound for the current match. */
-  private completeMatch(result: {
-    scores: Record<string, number>;
+  private completeRound(args: {
+    points: Record<string, number>;
     summary?: string;
+    participants?: string[];
   }) {
-    if (!this.active || this.active.ended || !this.active.session) return;
-
-    // Tear down the per-match session.
-    if (this.active.tickHandle) {
-      clearInterval(this.active.tickHandle);
-      this.active.tickHandle = null;
-    }
-    this.active.session.cleanup();
-    this.active.session = null;
-
-    if (result.summary) this.active.matchSummaries.push(result.summary);
-
-    if (this.active.format === "ffa") {
-      // No bracket — these scores are the round result directly.
-      this.finalizeRoundFromScores(result.scores, result.summary);
-      return;
-    }
-
-    // 1v1 / bracket flow: determine the winner from per-match scores
-    // (highest scorer wins; ties not expected for 1v1 first-to-N).
-    const winner = pickWinner(result.scores);
-    if (winner && this.active.bracket && this.active.currentMatchId) {
-      recordMatchResult(this.active.bracket, this.active.currentMatchId, winner);
-    }
-
-    // Enter intermission, then start the next match.
-    this.active.currentMatchId = null;
-    this.active.currentParticipants = [];
-    this.active.intermissionUntil = Date.now() + INTERMISSION_MS;
-    this.broadcastLobbyState();
-
-    this.active.intermissionTimer = setTimeout(() => {
-      if (!this.active) return;
-      this.active.intermissionTimer = null;
-      this.startNextMatchOrFinalize();
-    }, INTERMISSION_MS);
-  }
-
-  /** Bracket complete → derive scores from placements; finalize the round. */
-  private finalizeRound() {
-    if (!this.active || this.active.ended) return;
-    const round = this.active;
-    const scores: Record<string, number> =
-      round.bracket !== null
-        ? placementsToPoints(placements(round.bracket))
-        : {};
-    const summary =
-      round.matchSummaries.length > 0
-        ? round.matchSummaries[round.matchSummaries.length - 1]
-        : undefined;
-    this.finalizeRoundFromScores(scores, summary);
-  }
-
-  /** Common path: turn round-end scores into round-results state. */
-  private finalizeRoundFromScores(
-    scores: Record<string, number>,
-    summary: string | undefined,
-  ) {
     if (!this.active || this.active.ended) return;
     this.active.ended = true;
     if (this.active.tickHandle) {
       clearInterval(this.active.tickHandle);
       this.active.tickHandle = null;
     }
-    if (this.active.intermissionTimer) {
-      clearTimeout(this.active.intermissionTimer);
-      this.active.intermissionTimer = null;
+    try {
+      this.active.session.cleanup();
+    } catch {
+      /* ignore */
     }
-    if (this.active.session) {
-      try {
-        this.active.session.cleanup();
-      } catch {
-        /* ignore */
-      }
-      this.active.session = null;
-    }
-
-    const participants =
-      this.active.bracket?.participants ??
-      this.active.currentParticipants.map((p) => p.playerId);
 
     const fullResult: RoundResult = {
       minigameId: this.active.minigameId,
-      scores,
-      summary,
-      participants,
+      scores: args.points,
+      summary: args.summary,
+      participants:
+        args.participants ?? Object.keys(args.points),
     };
-    for (const [pid, pts] of Object.entries(scores)) {
+    for (const [pid, pts] of Object.entries(args.points)) {
       this.sessionScores[pid] = (this.sessionScores[pid] ?? 0) + pts;
     }
     this.lastResult = fullResult;
@@ -565,9 +447,16 @@ export default class LobbyServer implements Party.Server {
     this.room.broadcast(JSON.stringify(sessionMsg));
 
     if (this.resultsAutoDismissTimer) clearTimeout(this.resultsAutoDismissTimer);
+    const dismissMs = this.sequence
+      ? ROUND_RESULTS_AUTO_DISMISS_SHUFFLE_MS
+      : ROUND_RESULTS_AUTO_DISMISS_MS;
+    this.resultsDismissAt = Date.now() + dismissMs;
+    // Re-broadcast lobby state now that dismissAt is known (the broadcast
+    // before this point ran without it because we set the timestamp here).
+    this.broadcastLobbyState();
     this.resultsAutoDismissTimer = setTimeout(
       () => this.transitionToIdle(),
-      ROUND_RESULTS_AUTO_DISMISS_MS,
+      dismissMs,
     );
   }
 
@@ -582,35 +471,167 @@ export default class LobbyServer implements Party.Server {
     }
     if (this.active) {
       if (this.active.tickHandle) clearInterval(this.active.tickHandle);
-      if (this.active.intermissionTimer) clearTimeout(this.active.intermissionTimer);
-      if (this.active.session) {
-        try {
-          this.active.session.cleanup();
-        } catch {
-          /* ignore */
-        }
+      try {
+        this.active.session.cleanup();
+      } catch {
+        /* ignore */
       }
       this.active = null;
     }
     this.state = "idle";
     this.lastResult = null;
     this.broadcastLobbyState();
+    // If a shuffle sequence is active, kick off the inter-round countdown.
+    if (this.sequence && !this.sequence.paused) {
+      this.scheduleNextInSequence();
+    }
+  }
+
+  // ─── shuffle sequence ────────────────────────────────────────────────────
+
+  private startShuffle() {
+    if (this.state !== "idle") return;
+    if (this.sequence) return; // already running
+    const lobbyN = this.lobbyPlayersForMinigame().length;
+    const eligible = allMiniGames().filter(
+      (m) => m.minPlayers <= lobbyN && lobbyN <= m.maxPlayers,
+    );
+    if (eligible.length === 0) return;
+
+    const pool: string[] = [];
+    for (const m of eligible) {
+      const w = Math.max(1, m.shuffleWeight ?? 1);
+      for (let i = 0; i < w; i++) pool.push(m.id);
+    }
+    shuffleInPlace(pool);
+
+    this.sequence = {
+      plan: pool,
+      cursor: 0,
+      paused: false,
+      autoStartAt: null,
+      autoStartTimer: null,
+    };
+    // Start the first game right away (no intro countdown for the very first
+    // game; the per-mini-game preparing countdown still plays).
+    this.advanceSequence();
+  }
+
+  private advanceSequence() {
+    if (!this.sequence || this.sequence.paused) return;
+    const lobbyN = this.lobbyPlayersForMinigame().length;
+    while (this.sequence.cursor < this.sequence.plan.length) {
+      const id = this.sequence.plan[this.sequence.cursor];
+      const def = getMiniGame(id);
+      this.sequence.cursor++;
+      if (
+        def &&
+        def.minPlayers <= lobbyN &&
+        lobbyN <= def.maxPlayers
+      ) {
+        this.requestStartRound(id);
+        return;
+      }
+      // Otherwise: skip and try the next.
+    }
+    // Queue exhausted.
+    this.endSequence();
+    this.broadcastLobbyState();
+  }
+
+  private scheduleNextInSequence() {
+    if (!this.sequence || this.sequence.paused) return;
+    if (this.sequence.cursor >= this.sequence.plan.length) {
+      // No more games — finish the run.
+      this.endSequence();
+      this.broadcastLobbyState();
+      return;
+    }
+    if (this.sequence.autoStartTimer) {
+      clearTimeout(this.sequence.autoStartTimer);
+    }
+    this.sequence.autoStartAt = Date.now() + SEQUENCE_AUTOSTART_MS;
+    this.sequence.autoStartTimer = setTimeout(() => {
+      if (!this.sequence) return;
+      this.sequence.autoStartTimer = null;
+      this.sequence.autoStartAt = null;
+      this.advanceSequence();
+    }, SEQUENCE_AUTOSTART_MS);
+    this.broadcastLobbyState();
+  }
+
+  private pauseSequence() {
+    if (!this.sequence) return;
+    if (this.sequence.paused) return;
+    this.sequence.paused = true;
+    if (this.sequence.autoStartTimer) {
+      clearTimeout(this.sequence.autoStartTimer);
+      this.sequence.autoStartTimer = null;
+    }
+    this.sequence.autoStartAt = null;
+    this.broadcastLobbyState();
+  }
+
+  private resumeSequence() {
+    if (!this.sequence) return;
+    if (!this.sequence.paused) return;
+    this.sequence.paused = false;
+    // If we're sitting in idle waiting between games, restart the countdown.
+    if (this.state === "idle") {
+      this.scheduleNextInSequence();
+    } else {
+      this.broadcastLobbyState();
+    }
+  }
+
+  private endSequence() {
+    if (!this.sequence) return;
+    if (this.sequence.autoStartTimer) {
+      clearTimeout(this.sequence.autoStartTimer);
+    }
+    this.sequence = null;
+  }
+
+  private buildSequencePublic(): SequencePublicState | undefined {
+    if (!this.sequence) return undefined;
+    const remaining = this.sequence.plan.length - this.sequence.cursor;
+    const nextId =
+      this.sequence.cursor < this.sequence.plan.length
+        ? this.sequence.plan[this.sequence.cursor]
+        : null;
+    return {
+      total: this.sequence.plan.length,
+      // Public index = number of completed rounds (= cursor when between rounds,
+      // = cursor-1 while a round is running). The currently-running game has
+      // already been pulled off the queue, so cursor points to the NEXT slot.
+      // We expose `index` = (total - remaining) which the client can use directly.
+      index: this.sequence.cursor - 1 < 0 ? 0 : this.sequence.cursor - 1,
+      remaining,
+      nextMinigameId: nextId,
+      paused: this.sequence.paused,
+      autoStartAt: this.sequence.autoStartAt,
+    };
   }
 
   // ─── helpers ─────────────────────────────────────────────────────────────
 
-  private nick(playerId: string): string {
-    return this.registry.getByPlayerId(playerId)?.nickname ?? "?";
+  /**
+   * Player edits to nickname/avatar are accepted only when the lobby is in
+   * a "calm" state: idle (no active round), and either no shuffle sequence
+   * is running or it is paused.
+   */
+  private isEditEligible(): boolean {
+    if (this.state !== "idle") return false;
+    if (!this.sequence) return true;
+    return this.sequence.paused;
   }
 
   private lobbyPlayersForMinigame(): MiniGamePlayer[] {
-    return this.registry
-      .connected()
-      .map<MiniGamePlayer>((p) => ({
-        playerId: p.playerId,
-        nickname: p.nickname,
-        avatarId: p.avatarId,
-      }));
+    return this.registry.connected().map<MiniGamePlayer>((p) => ({
+      playerId: p.playerId,
+      nickname: p.nickname,
+      avatarId: p.avatarId,
+    }));
   }
 
   private connectionFor(playerId: string): Party.Connection | null {
@@ -628,37 +649,26 @@ export default class LobbyServer implements Party.Server {
   }
 
   private buildLobbyStateMsg(): LobbyStateMsg {
+    const sequence = this.buildSequencePublic();
     if (this.state === "preparing") {
       return {
         scope: "lobby",
         type: "state",
         state: "preparing",
         minigameId: this.prepareMinigameId,
-        participants: [],
         countdownEndsAt: this.prepareUntil,
+        ...(sequence ? { sequence } : {}),
       };
     }
     if (this.state === "playing" && this.active) {
-      const msg: LobbyStateMsg = {
+      return {
         scope: "lobby",
         type: "state",
         state: "playing",
         minigameId: this.active.minigameId,
-        participants: this.active.currentParticipants.map((p) => p.playerId),
+        gamemodeId: this.active.gamemodeId,
+        ...(sequence ? { sequence } : {}),
       };
-      if (this.active.bracket) {
-        msg.bracket = this.toPublicBracket(
-          this.active.bracket,
-          this.active.currentMatchId,
-        );
-      }
-      if (
-        this.active.intermissionUntil !== null &&
-        this.active.intermissionUntil > Date.now()
-      ) {
-        msg.intermissionUntil = this.active.intermissionUntil;
-      }
-      return msg;
     }
     if (this.state === "round-results" && this.lastResult) {
       return {
@@ -666,29 +676,23 @@ export default class LobbyServer implements Party.Server {
         type: "state",
         state: "round-results",
         result: this.lastResult,
+        dismissAt: this.resultsDismissAt,
+        ...(sequence ? { sequence } : {}),
       };
     }
     if (this.state === "session-results") {
-      return { scope: "lobby", type: "state", state: "session-results" };
+      return {
+        scope: "lobby",
+        type: "state",
+        state: "session-results",
+        ...(sequence ? { sequence } : {}),
+      };
     }
-    return { scope: "lobby", type: "state", state: "idle" };
-  }
-
-  private toPublicBracket(
-    bracket: Bracket,
-    activeMatchId: string | null,
-  ): PublicBracket {
     return {
-      rounds: bracket.rounds,
-      matches: bracket.matches.map((m: BracketMatch) => ({
-        matchId: m.matchId,
-        round: m.round,
-        index: m.index,
-        a: m.a,
-        b: m.b,
-        winner: m.winner,
-      })),
-      activeMatchId,
+      scope: "lobby",
+      type: "state",
+      state: "idle",
+      ...(sequence ? { sequence } : {}),
     };
   }
 
@@ -708,16 +712,11 @@ export default class LobbyServer implements Party.Server {
   }
 }
 
-function pickWinner(scores: Record<string, number>): string | null {
-  let best: string | null = null;
-  let bestScore = -Infinity;
-  for (const [pid, s] of Object.entries(scores)) {
-    if (s > bestScore) {
-      bestScore = s;
-      best = pid;
-    }
+function shuffleInPlace<T>(arr: T[]): void {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
   }
-  return best;
 }
 
 // Suppress unused-import warning when noUnusedParameters keeps PlayerRecord typed.

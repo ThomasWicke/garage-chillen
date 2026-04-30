@@ -1,7 +1,9 @@
 // Wire protocol shared between client and server.
-// Every message has a `scope` so mini-game messages cannot collide with
-// lobby/presence/clicker messages. The lobby server forwards `scope: "minigame"`
-// messages opaquely to the active mini-game module.
+// Every message has a `scope`. Gamemode + match traffic share `scope: "minigame"`
+// disambiguated by `target`:
+//   • target: "gamemode" — gamemode-level (bracket-state, round-intro, etc.)
+//   • target: "match" + matchId — per-match traffic (welcome, state, fire…)
+// The server forwards both opaquely; the client routes by target/matchId.
 
 export type LobbyState =
   | "idle"
@@ -22,7 +24,7 @@ export type RoundResult = {
   minigameId: string;
   /** Per-player points contributed to the session aggregate this round. */
   scores: Record<string, number>;
-  /** Optional human-readable summary the mini-game wants displayed. */
+  /** Optional human-readable summary the gamemode wants displayed. */
   summary?: string;
   /** Player IDs who actually participated (others were spectators). */
   participants: string[];
@@ -65,15 +67,30 @@ export type SetAvatarMsg = {
   avatarId: string;
 };
 
+/**
+ * Server → client rejection of an in-lobby edit (set-nickname / set-avatar).
+ * Used when the requested change conflicts with another player or fails the
+ * editability gate. The client is responsible for reverting any optimistic
+ * UI and surfacing the reason.
+ */
+export type EditRejectedMsg = {
+  scope: "presence";
+  type: "edit-rejected";
+  field: "nickname" | "avatar";
+  reason: "duplicate" | "invalid" | "not-allowed";
+};
+
 // ─── lobby ─────────────────────────────────────────────────────────────────
 
 /** Static metadata about a mini-game, shared with the client for the GM picker. */
 export type MiniGameInfo = {
   id: string;
   displayName: string;
+  gamemode: "tournament" | "last-man-standing";
+  matchSize: number;
   minPlayers: number;
   maxPlayers: number;
-  format: "1v1" | "ffa";
+  shuffleWeight: number;
 };
 
 export type AvailableMiniGamesMsg = {
@@ -90,56 +107,55 @@ export type SessionStateMsg = {
   scores: Record<string, number>;
 };
 
-/** Public bracket snapshot — included with "playing" lobby states for 1v1
- *  mini-games that have a bracket layer wrapped around them. */
-export type PublicBracket = {
-  rounds: number;
-  /** All matches in the bracket, ordered by round then by match index. */
-  matches: {
-    matchId: string;
-    round: number;
-    index: number;
-    a: string | null;
-    b: string | null;
-    winner: string | null;
-  }[];
-  /** matchId currently being played, or null between matches / before start. */
-  activeMatchId: string | null;
+/** Public sequence (Shuffle) progress, attached to all lobby states while a
+ *  shuffle sequence is active. */
+export type SequencePublicState = {
+  /** Total games originally queued. */
+  total: number;
+  /** Index of the currently-running / just-completed game (0-based). */
+  index: number;
+  /** Number of games still remaining (including currently running). */
+  remaining: number;
+  /** Mini-game ID about to start next; null when the queue is empty. */
+  nextMinigameId: string | null;
+  /** Whether the GM has paused the sequence. */
+  paused: boolean;
+  /** Server time when the next round will auto-start (lobby idle countdown).
+   *  Null while not in the inter-round window or while paused. */
+  autoStartAt: number | null;
 };
 
-export type LobbyStateMsg =
-  | { scope: "lobby"; type: "state"; state: "idle" }
-  | {
-      scope: "lobby";
-      type: "state";
-      state: "preparing";
-      minigameId: string;
-      participants: string[];
-      countdownEndsAt: number;
-    }
-  | {
-      scope: "lobby";
-      type: "state";
-      state: "playing";
-      minigameId: string;
-      participants: string[]; // current match's participants
-      bracket?: PublicBracket;
-      /** Brief intermission between bracket matches (server timestamp);
-       *  while > Date.now(), no match is active. */
-      intermissionUntil?: number;
-    }
-  | {
-      scope: "lobby";
-      type: "state";
-      state: "round-results";
-      result: RoundResult;
-    }
-  | {
-      scope: "lobby";
-      type: "state";
-      state: "session-results";
-      // Phase 5 — placeholder.
-    };
+type LobbyStateBase = {
+  scope: "lobby";
+  type: "state";
+  /** Present while a shuffle sequence is running. */
+  sequence?: SequencePublicState;
+};
+
+export type LobbyStateMsg = LobbyStateBase &
+  (
+    | { state: "idle" }
+    | {
+        state: "preparing";
+        minigameId: string;
+        countdownEndsAt: number;
+      }
+    | {
+        state: "playing";
+        minigameId: string;
+        gamemodeId: string;
+      }
+    | {
+        state: "round-results";
+        result: RoundResult;
+        /** Server time when round-results auto-dismisses to idle. */
+        dismissAt: number;
+      }
+    | {
+        state: "session-results";
+        // Phase 5 — placeholder.
+      }
+  );
 
 export type StartRoundMsg = {
   scope: "lobby";
@@ -152,10 +168,39 @@ export type BackToLobbyMsg = {
   type: "back-to-lobby";
 };
 
-// ─── minigame (opaque pass-through) ────────────────────────────────────────
+export type StartShuffleMsg = {
+  scope: "lobby";
+  type: "start-shuffle";
+};
 
+export type PauseSequenceMsg = {
+  scope: "lobby";
+  type: "pause-sequence";
+};
+
+export type ResumeSequenceMsg = {
+  scope: "lobby";
+  type: "resume-sequence";
+};
+
+export type EndSequenceMsg = {
+  scope: "lobby";
+  type: "end-sequence";
+};
+
+// ─── minigame (gamemode + match traffic; opaque pass-through) ─────────────
+
+/**
+ * scope:"minigame" — both gamemode-level and per-match messages.
+ *   target = "gamemode"  → handled by the active gamemode session.
+ *   target = "match"     → routed by `matchId` to a specific match session.
+ * If `target` is omitted, server defaults to "match" for backwards-compat
+ * with simpler mini-games (but the new flow always sets target explicitly).
+ */
 export type MiniGameMsg = {
   scope: "minigame";
+  target: "gamemode" | "match";
+  matchId?: string;
   type: string;
   [key: string]: unknown;
 };
@@ -168,11 +213,16 @@ export type ClientToServer =
   | SetAvatarMsg
   | StartRoundMsg
   | BackToLobbyMsg
+  | StartShuffleMsg
+  | PauseSequenceMsg
+  | ResumeSequenceMsg
+  | EndSequenceMsg
   | MiniGameMsg;
 
 export type ServerToClient =
   | WelcomeMsg
   | PlayerListMsg
+  | EditRejectedMsg
   | AvailableMiniGamesMsg
   | SessionStateMsg
   | LobbyStateMsg
