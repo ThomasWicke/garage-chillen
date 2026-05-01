@@ -352,18 +352,18 @@ export default class LobbyServer implements Party.Server {
         };
         conn.send(JSON.stringify(wire));
       },
-      broadcastMatch: (matchId, recipientIds, m) => {
+      broadcastMatch: (matchId, _recipientIds, m) => {
+        // Broadcast match state to ALL room members, not just participants.
+        // This enables spectator mode: bye players in a tournament round can
+        // watch an active match. Inputs remain server-gated by `participantIds`
+        // inside the gamemode/match logic.
         const wire: MiniGameMsg = {
           scope: "minigame",
           target: "match",
           matchId,
           ...m,
         };
-        const payload = JSON.stringify(wire);
-        for (const pid of recipientIds) {
-          const conn = this.connectionFor(pid);
-          if (conn) conn.send(payload);
-        }
+        this.room.broadcast(JSON.stringify(wire));
       },
       sendMatch: (matchId, playerId, m) => {
         const conn = this.connectionFor(playerId);

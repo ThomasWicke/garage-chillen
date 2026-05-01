@@ -71,6 +71,13 @@ function createTournamentClientSession(
   let activeMatchSession: MatchClientSession | null = null;
   let activeMatchId: string | null = null;
   let countdownTimer: ReturnType<typeof setInterval> | null = null;
+  /**
+   * Cached welcome message per matchId. Match servers broadcast welcome
+   * once at match start — clients that mount the match scene LATER (e.g.
+   * a spectator cycling between parallel matches) need this replayed,
+   * otherwise their scene sits at "connecting…" with no config.
+   */
+  const welcomeByMatchId = new Map<string, { type: string; [k: string]: unknown }>();
 
   const playerNick = new Map<string, string>();
   for (const p of ctx.lobbyPlayers) playerNick.set(p.playerId, p.nickname);
@@ -83,38 +90,111 @@ function createTournamentClientSession(
 
   // ─── view selection ──────────────────────────────────────────────────────
 
-  function selfActiveMatch(): ActiveMatchInfo | null {
+  /**
+   * Pick the match the local player should currently see, with their role:
+   *   • participant — they're in an active match, mount it with input wired up
+   *   • spectator   — they're on a bye but a match is running, watch the
+   *                   first active match (matches are deterministically
+   *                   ordered by bracket index so all spectators land on the
+   *                   same match)
+   * Returns null when no match should be shown (intro/between/complete).
+   */
+  function activeMatchToShow():
+    | { info: ActiveMatchInfo; role: "participant" | "spectator" }
+    | null {
     if (!bracketState) return null;
     if (bracketState.phase !== "round") return null;
-    return (
-      bracketState.activeMatches.find((m) =>
-        m.participants.includes(ctx.selfPlayerId),
-      ) ?? null
+    const own = bracketState.activeMatches.find((m) =>
+      m.participants.includes(ctx.selfPlayerId),
     );
+    if (own) return { info: own, role: "participant" };
+    if (bracketState.activeMatches.length > 0) {
+      // Preserve the spectator's manual choice across bracket-state updates.
+      // Without this, every state push would yank them back to the first
+      // active match.
+      const current = bracketState.activeMatches.find(
+        (m) => m.matchId === activeMatchId,
+      );
+      if (current) return { info: current, role: "spectator" };
+      return {
+        info: bracketState.activeMatches[0],
+        role: "spectator",
+      };
+    }
+    return null;
   }
 
   function rerender() {
-    const myMatch = selfActiveMatch();
+    const sel = activeMatchToShow();
 
-    if (myMatch && myMatch.matchId !== activeMatchId) {
-      mountMatch(myMatch);
-    } else if (!myMatch && activeMatchSession) {
+    if (sel && sel.info.matchId !== activeMatchId) {
+      mountMatch(sel.info, sel.role === "spectator");
+    } else if (!sel && activeMatchSession) {
       unmountMatch();
     }
 
-    if (myMatch) {
-      // Match scene visible.
+    if (sel) {
       matchEl.hidden = false;
       bracketEl.hidden = true;
+      matchEl.classList.toggle("spectating", sel.role === "spectator");
+      if (sel.role === "spectator") {
+        applySpectatorLabel(sel.info);
+      } else {
+        matchEl.removeAttribute("data-spectator-label");
+      }
     } else {
-      // Bracket overlay visible.
       matchEl.hidden = true;
       bracketEl.hidden = false;
+      matchEl.classList.remove("spectating");
+      matchEl.removeAttribute("data-spectator-label");
       renderBracket();
     }
   }
 
-  function mountMatch(info: ActiveMatchInfo) {
+  /**
+   * Update the spectator banner with the participants' nicknames. Stored as a
+   * data attribute so the CSS `::after` pseudo-element can `attr()` it — keeps
+   * the chrome layered on top of the canvas without touching the match's DOM
+   * (which gets blown away on every (un)mount).
+   */
+  function applySpectatorLabel(info: ActiveMatchInfo) {
+    const [pidA, pidB] = info.participants;
+    matchEl.setAttribute(
+      "data-spectator-label",
+      `SPECTATING · ${nick(pidA)} vs ${nick(pidB)}`,
+    );
+  }
+
+  /**
+   * Tap-to-cycle: while in spectator mode, a tap anywhere on the scene moves
+   * to the next active match. No-ops when there's only one match running, or
+   * when the local player is a participant (their taps are gameplay input).
+   *
+   * Bound to `touchstart` + `mousedown` rather than `click` because Kaplay's
+   * internal canvas handlers call `preventDefault` on touchstart, which
+   * suppresses the synthesized click on iOS — the click listener would
+   * silently never fire on phones.
+   */
+  let lastCycleAt = 0;
+  const cycleHandler = () => {
+    if (!matchEl.classList.contains("spectating")) return;
+    if (!bracketState) return;
+    const now = Date.now();
+    if (now - lastCycleAt < 200) return; // dedupe touchstart vs synthesized click
+    const matches = bracketState.activeMatches;
+    if (matches.length <= 1) return;
+    const idx = matches.findIndex((m) => m.matchId === activeMatchId);
+    const nextIdx = ((idx >= 0 ? idx : -1) + 1) % matches.length;
+    const next = matches[nextIdx];
+    if (!next || next.matchId === activeMatchId) return;
+    lastCycleAt = now;
+    mountMatch(next, true);
+    applySpectatorLabel(next);
+  };
+  matchEl.addEventListener("touchstart", cycleHandler, { passive: true });
+  matchEl.addEventListener("mousedown", cycleHandler);
+
+  function mountMatch(info: ActiveMatchInfo, isSpectator: boolean) {
     unmountMatch();
     matchEl.innerHTML = "";
     activeMatchId = info.matchId;
@@ -126,7 +206,9 @@ function createTournamentClientSession(
       matchId: info.matchId,
       selfPlayerId: ctx.selfPlayerId,
       participants,
-      send: (m) => ctx.sendMatch(info.matchId, m),
+      isSpectator,
+      // Spectators should never be sending — defensive no-op.
+      send: isSpectator ? () => {} : (m) => ctx.sendMatch(info.matchId, m),
       setMatchScore: (text) => ctx.setMatchScore(text),
     };
     try {
@@ -135,6 +217,18 @@ function createTournamentClientSession(
       console.error("[tournament] match createMatch error", e);
       activeMatchSession = null;
       activeMatchId = null;
+      return;
+    }
+    // Replay the cached welcome so a freshly-mounted match (e.g. a spectator
+    // cycling in mid-match) gets its config without waiting for the next
+    // server-driven welcome (which never comes — welcome is one-shot).
+    const cachedWelcome = welcomeByMatchId.get(info.matchId);
+    if (cachedWelcome && activeMatchSession) {
+      try {
+        activeMatchSession.onMessage(cachedWelcome);
+      } catch (e) {
+        console.error("[tournament] welcome replay error", e);
+      }
     }
   }
 
@@ -304,7 +398,7 @@ function createTournamentClientSession(
     countdownTimer = setInterval(() => {
       if (!bracketState) return;
       if (bracketState.phase === "intro" || bracketState.phase === "between") {
-        if (!selfActiveMatch()) renderBracket();
+        if (!activeMatchToShow()) renderBracket();
       }
     }, 250);
   }
@@ -326,7 +420,13 @@ function createTournamentClientSession(
       }
     },
     onMatchMessage(matchId, msg) {
+      // Cache welcomes so spectators that mount a match late (via tap-to-
+      // cycle) can be replayed the config in mountMatch.
+      if (msg.type === "welcome") {
+        welcomeByMatchId.set(matchId, msg);
+      }
       if (msg.type === "match-ended") {
+        welcomeByMatchId.delete(matchId);
         // Synthetic gamemode broadcast — if it's our match, drop the scene.
         // Also patch bracketState locally so rerender doesn't re-mount before
         // the authoritative bracket-state arrives a moment later.
@@ -349,6 +449,7 @@ function createTournamentClientSession(
     unmount() {
       clearCountdownTimer();
       unmountMatch();
+      welcomeByMatchId.clear();
       ctx.container.innerHTML = "";
     },
   };

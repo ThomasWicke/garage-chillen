@@ -32,11 +32,10 @@ import type {
   MiniGameClientDefinition,
 } from "../types";
 
-type Role = "p1" | "p2";
+type Role = "p1" | "p2" | "spectator";
 
 type WelcomeMsg = {
   type: "welcome";
-  role: Role;
   field: { w: number; h: number };
   ship: { radius: number };
   bullet: { size: number };
@@ -242,53 +241,64 @@ function createAsteroidsMatchClient(
       ]);
     });
 
-    kk.onTouchStart((pos) => {
-      if (role !== "p1" && role !== "p2") return;
-      touchStartPos = { x: pos.x, y: pos.y };
-      const angle = angleFromShipTo(pos);
-      if (angle !== null) sendAngleIfChanged(angle);
-      if (thrustTimer) clearTimeout(thrustTimer);
-      thrustTimer = setTimeout(() => {
-        thrustTimer = null;
-        setThrust(true);
-      }, HOLD_THRUST_MS);
-    });
-    kk.onTouchMove((pos) => {
-      if (role !== "p1" && role !== "p2") return;
-      const angle = angleFromShipTo(pos);
-      if (angle !== null) sendAngleIfChanged(angle);
-      if (touchStartPos && thrustTimer) {
-        const dx = pos.x - touchStartPos.x;
-        const dy = pos.y - touchStartPos.y;
-        if (dx * dx + dy * dy > 36) {
-          clearTimeout(thrustTimer);
+    // Spectators don't bind input handlers and the FIRE button is hidden.
+    if (ctx.isSpectator) {
+      fireBtn.hidden = true;
+    } else {
+      kk.onTouchStart((pos) => {
+        if (role !== "p1" && role !== "p2") return;
+        touchStartPos = { x: pos.x, y: pos.y };
+        const angle = angleFromShipTo(pos);
+        if (angle !== null) sendAngleIfChanged(angle);
+        if (thrustTimer) clearTimeout(thrustTimer);
+        thrustTimer = setTimeout(() => {
           thrustTimer = null;
           setThrust(true);
+        }, HOLD_THRUST_MS);
+      });
+      kk.onTouchMove((pos) => {
+        if (role !== "p1" && role !== "p2") return;
+        const angle = angleFromShipTo(pos);
+        if (angle !== null) sendAngleIfChanged(angle);
+        if (touchStartPos && thrustTimer) {
+          const dx = pos.x - touchStartPos.x;
+          const dy = pos.y - touchStartPos.y;
+          if (dx * dx + dy * dy > 36) {
+            clearTimeout(thrustTimer);
+            thrustTimer = null;
+            setThrust(true);
+          }
         }
-      }
-    });
-    kk.onTouchEnd(() => {
-      if (thrustTimer) {
-        clearTimeout(thrustTimer);
-        thrustTimer = null;
-      }
-      setThrust(false);
-      touchStartPos = null;
-    });
+      });
+      kk.onTouchEnd(() => {
+        if (thrustTimer) {
+          clearTimeout(thrustTimer);
+          thrustTimer = null;
+        }
+        setThrust(false);
+        touchStartPos = null;
+      });
 
-    const fire = (e: Event) => {
-      e.preventDefault();
-      e.stopPropagation();
-      if (role !== "p1" && role !== "p2") return;
-      ctx.send({ type: "fire" });
-    };
-    fireBtn.addEventListener("touchstart", fire, { passive: false });
-    fireBtn.addEventListener("mousedown", fire);
+      const fire = (e: Event) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (role !== "p1" && role !== "p2") return;
+        ctx.send({ type: "fire" });
+      };
+      fireBtn.addEventListener("touchstart", fire, { passive: false });
+      fireBtn.addEventListener("mousedown", fire);
+    }
   }
 
   function applyWelcome(msg: WelcomeMsg) {
-    role = msg.role;
-    statusEl.textContent = `playing as ${role.toUpperCase()} · first to ${msg.firstTo}`;
+    // Derive role from welcome's players info (broadcast to all viewers).
+    if (msg.players.p1.playerId === ctx.selfPlayerId) role = "p1";
+    else if (msg.players.p2.playerId === ctx.selfPlayerId) role = "p2";
+    else role = "spectator";
+    statusEl.textContent =
+      role === "spectator"
+        ? `${msg.players.p1.nickname} vs ${msg.players.p2.nickname}`
+        : `playing as ${role.toUpperCase()} · first to ${msg.firstTo}`;
     buildScene(msg);
   }
 

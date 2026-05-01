@@ -118,24 +118,21 @@ function createAsteroidsMatch(ctx: MatchContext): MatchSession {
   spawnShip(state.ships.p1, AST_FIELD_W / 2, AST_FIELD_H * 0.25, Math.PI);
   spawnShip(state.ships.p2, AST_FIELD_W / 2, AST_FIELD_H * 0.75, 0);
 
-  ctx.sendTo(p1.playerId, welcomeFor("p1"));
-  ctx.sendTo(p2.playerId, welcomeFor("p2"));
-
-  function welcomeFor(role: "p1" | "p2") {
-    return {
-      type: "welcome",
-      role,
-      field: { w: AST_FIELD_W, h: AST_FIELD_H },
-      ship: { radius: AST_SHIP_RADIUS },
-      bullet: { size: AST_BULLET_SIZE },
-      firstTo: FIRST_TO,
-      deadlineAt: ctx.deadlineAt,
-      players: {
-        p1: { playerId: p1.playerId, nickname: p1.nickname, avatarId: p1.avatarId },
-        p2: { playerId: p2.playerId, nickname: p2.nickname, avatarId: p2.avatarId },
-      },
-    };
-  }
+  // Single welcome broadcast to ALL room members. Each client (participant
+  // or spectator) derives its own role by comparing selfPlayerId against
+  // players.p1.playerId / players.p2.playerId.
+  ctx.broadcast({
+    type: "welcome",
+    field: { w: AST_FIELD_W, h: AST_FIELD_H },
+    ship: { radius: AST_SHIP_RADIUS },
+    bullet: { size: AST_BULLET_SIZE },
+    firstTo: FIRST_TO,
+    deadlineAt: ctx.deadlineAt,
+    players: {
+      p1: { playerId: p1.playerId, nickname: p1.nickname, avatarId: p1.avatarId },
+      p2: { playerId: p2.playerId, nickname: p2.nickname, avatarId: p2.avatarId },
+    },
+  });
 
   function broadcastState() {
     ctx.broadcast({

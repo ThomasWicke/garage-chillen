@@ -18,6 +18,11 @@ export type MatchClientContext = {
   selfPlayerId: string;
   /** Match participants (matchSize of them). */
   participants: MiniGameClientPlayer[];
+  /** True when the local player is watching the match without participating
+   *  (e.g. on a tournament bye). The match client should skip input handlers
+   *  and not call `send()`. The gamemode applies the surrounding visual chrome
+   *  (yellow stroke + tag); the match doesn't need to render that itself. */
+  isSpectator: boolean;
   /** Send a `scope: "minigame"` match-targeted message, automatically tagged
    *  with `target: "match"` and this matchId by the gamemode wrapper. */
   send: (msg: { type: string; [k: string]: unknown }) => void;

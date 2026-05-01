@@ -25,7 +25,7 @@ export const PONG_PADDLE_Y_BOTTOM = PONG_FIELD_H - 40;
 const INITIAL_BALL_SPEED = 340;
 const SPEED_INCREMENT = 1.05;
 const MAX_DEFLECT = 0.7; // radians, deviation from vertical at paddle edges
-const FIRST_TO = 5;
+const FIRST_TO = 3;
 const PONG_MATCH_TIMEOUT_MS = 120_000;
 
 type ServerState = {
@@ -76,26 +76,20 @@ function createPongMatch(ctx: MatchContext): MatchSession {
     });
   }
 
-  // Send role assignments + static config.
-  ctx.sendTo(p1.playerId, {
+  // Single welcome broadcast to ALL room members. Each client (participant
+  // or spectator) derives its own role by comparing selfPlayerId against
+  // players.p1.playerId / players.p2.playerId.
+  ctx.broadcast({
     type: "welcome",
-    role: "p1",
     field: { w: PONG_FIELD_W, h: PONG_FIELD_H },
     paddle: { w: PONG_PADDLE_W, h: PONG_PADDLE_H },
     ball: PONG_BALL_SIZE,
     firstTo: FIRST_TO,
     deadlineAt: ctx.deadlineAt,
-    opponent: { playerId: p2.playerId, nickname: p2.nickname, avatarId: p2.avatarId },
-  });
-  ctx.sendTo(p2.playerId, {
-    type: "welcome",
-    role: "p2",
-    field: { w: PONG_FIELD_W, h: PONG_FIELD_H },
-    paddle: { w: PONG_PADDLE_W, h: PONG_PADDLE_H },
-    ball: PONG_BALL_SIZE,
-    firstTo: FIRST_TO,
-    deadlineAt: ctx.deadlineAt,
-    opponent: { playerId: p1.playerId, nickname: p1.nickname, avatarId: p1.avatarId },
+    players: {
+      p1: { playerId: p1.playerId, nickname: p1.nickname, avatarId: p1.avatarId },
+      p2: { playerId: p2.playerId, nickname: p2.nickname, avatarId: p2.avatarId },
+    },
   });
 
   state.running = true;

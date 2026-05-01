@@ -88,6 +88,8 @@ function createLmsClientSession(
       matchId,
       selfPlayerId: ctx.selfPlayerId,
       participants,
+      // LMS is FFA — everyone in the lobby is a participant, no spectators.
+      isSpectator: false,
       send: (m) => ctx.sendMatch(matchId, m),
       setMatchScore: (text) => ctx.setMatchScore(text),
     };

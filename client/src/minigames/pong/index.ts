@@ -24,17 +24,19 @@ import type {
 
 type Sprite = GameObj<PosComp | RectComp | ColorComp | AnchorComp>;
 
-type Role = "p1" | "p2";
+type Role = "p1" | "p2" | "spectator";
 
 type WelcomeMsg = {
   type: "welcome";
-  role: Role;
   field: { w: number; h: number };
   paddle: { w: number; h: number };
   ball: number;
   firstTo: number;
   deadlineAt: number;
-  opponent?: { playerId: string; nickname: string; avatarId: string };
+  players: {
+    p1: { playerId: string; nickname: string; avatarId: string };
+    p2: { playerId: string; nickname: string; avatarId: string };
+  };
 };
 
 type StateMsg = {
@@ -77,6 +79,8 @@ function createPongMatchClient(ctx: MatchClientContext): MatchClientSession {
   let lastSentX = -1;
   let lastSentAt = 0;
 
+  // View flip for p1 only (so each participant's own paddle is at the bottom).
+  // Spectators see the canonical orientation (no flip).
   function flipY(y: number): number {
     return role === "p1" ? fieldH - y : y;
   }
@@ -129,38 +133,41 @@ function createPongMatchClient(ctx: MatchClientContext): MatchClientSession {
       k.color(240, 240, 240),
     ]);
 
-    function onTouch(pos: { x: number; y: number }) {
-      if (role !== "p1" && role !== "p2") return;
-      const canonicalX = touchToCanonicalX(pos.x);
-      myPaddleX = Math.max(
-        paddleW / 2,
-        Math.min(fieldW - paddleW / 2, canonicalX),
-      );
-    }
-    k.onTouchStart(onTouch);
-    k.onTouchMove(onTouch);
-    k.onMouseDown(() => {
-      if (k) onTouch(k.mousePos());
-    });
+    // Inputs are only bound for participants. Spectators just watch.
+    if (!ctx.isSpectator) {
+      function onTouch(pos: { x: number; y: number }) {
+        if (role !== "p1" && role !== "p2") return;
+        const canonicalX = touchToCanonicalX(pos.x);
+        myPaddleX = Math.max(
+          paddleW / 2,
+          Math.min(fieldW - paddleW / 2, canonicalX),
+        );
+      }
+      k.onTouchStart(onTouch);
+      k.onTouchMove(onTouch);
+      k.onMouseDown(() => {
+        if (k) onTouch(k.mousePos());
+      });
 
-    k.onUpdate(() => {
-      if (role !== "p1" && role !== "p2") return;
-      const ownDisplayX = flipX(myPaddleX);
-      const ownDisplayY = flipY(
-        role === "p1" ? fieldH * PADDLE_Y_TOP_RATIO : fieldH * PADDLE_Y_BOTTOM_RATIO,
-      );
-      const ownPaddle = role === "p1" ? leftPaddle : rightPaddle;
-      if (ownPaddle) {
-        ownPaddle.pos.x = ownDisplayX;
-        ownPaddle.pos.y = ownDisplayY;
-      }
-      const now = Date.now();
-      if (myPaddleX !== lastSentX && now - lastSentAt > 33) {
-        ctx.send({ type: "paddle", x: myPaddleX });
-        lastSentX = myPaddleX;
-        lastSentAt = now;
-      }
-    });
+      k.onUpdate(() => {
+        if (role !== "p1" && role !== "p2") return;
+        const ownDisplayX = flipX(myPaddleX);
+        const ownDisplayY = flipY(
+          role === "p1" ? fieldH * PADDLE_Y_TOP_RATIO : fieldH * PADDLE_Y_BOTTOM_RATIO,
+        );
+        const ownPaddle = role === "p1" ? leftPaddle : rightPaddle;
+        if (ownPaddle) {
+          ownPaddle.pos.x = ownDisplayX;
+          ownPaddle.pos.y = ownDisplayY;
+        }
+        const now = Date.now();
+        if (myPaddleX !== lastSentX && now - lastSentAt > 33) {
+          ctx.send({ type: "paddle", x: myPaddleX });
+          lastSentX = myPaddleX;
+          lastSentAt = now;
+        }
+      });
+    }
   }
 
   function applyState(msg: StateMsg) {
@@ -169,6 +176,8 @@ function createPongMatchClient(ctx: MatchClientContext): MatchClientSession {
     const p1DisplayY = flipY(fieldH * PADDLE_Y_TOP_RATIO);
     const p2DisplayX = flipX(msg.paddles.p2);
     const p2DisplayY = flipY(fieldH * PADDLE_Y_BOTTOM_RATIO);
+    // Participants drive their own paddle locally and let the server sync
+    // the opponent. Spectators take both paddles from the server.
     if (role !== "p1") {
       leftPaddle.pos.x = p1DisplayX;
       leftPaddle.pos.y = p1DisplayY;
@@ -180,6 +189,7 @@ function createPongMatchClient(ctx: MatchClientContext): MatchClientSession {
     ball.pos.x = flipX(msg.ball.x);
     ball.pos.y = flipY(msg.ball.y);
 
+    // Match score in the toolbar — for spectators, p1 score on the left.
     const myScore = role === "p2" ? msg.scores.p2 : msg.scores.p1;
     const theirScore = role === "p2" ? msg.scores.p1 : msg.scores.p2;
     ctx.setMatchScore(`${myScore} – ${theirScore}`);
@@ -188,14 +198,20 @@ function createPongMatchClient(ctx: MatchClientContext): MatchClientSession {
   }
 
   function applyWelcome(msg: WelcomeMsg) {
-    role = msg.role;
+    // Derive role from welcome's players info (broadcast to all viewers).
+    if (msg.players.p1.playerId === ctx.selfPlayerId) role = "p1";
+    else if (msg.players.p2.playerId === ctx.selfPlayerId) role = "p2";
+    else role = "spectator";
     fieldW = msg.field.w;
     fieldH = msg.field.h;
     paddleW = msg.paddle.w;
     paddleH = msg.paddle.h;
     ballSize = msg.ball;
     myPaddleX = fieldW / 2;
-    statusEl.textContent = `playing as ${role.toUpperCase()} · first to ${msg.firstTo}`;
+    statusEl.textContent =
+      role === "spectator"
+        ? `${msg.players.p1.nickname} vs ${msg.players.p2.nickname}`
+        : `playing as ${role.toUpperCase()} · first to ${msg.firstTo}`;
     buildScene();
   }
 

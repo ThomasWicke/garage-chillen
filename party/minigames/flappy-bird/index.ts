@@ -287,7 +287,7 @@ const FlappyBirdDefinition: MiniGameDefinition = {
   orientation: "portrait",
   tickHz: 30,
   matchTimeoutMs: FB_MATCH_TIMEOUT_MS,
-  shuffleWeight: 1,
+  shuffleWeight: 2,
   createMatch: createFlappyBirdMatch,
 };
 
