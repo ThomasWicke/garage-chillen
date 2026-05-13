@@ -11,10 +11,22 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Garage" />
     <meta name="theme-color" content="#0a0a14" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Fuzzy+Bubbles:wght@400;700&display=swap" rel="stylesheet" />
     <style>
+      /* Self-hosted to avoid third-party data transfer to Google. */
+      @font-face {
+        font-family: "Fuzzy Bubbles";
+        font-style: normal;
+        font-weight: 400;
+        font-display: swap;
+        src: url("/fonts/fuzzy-bubbles-400.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "Fuzzy Bubbles";
+        font-style: normal;
+        font-weight: 700;
+        font-display: swap;
+        src: url("/fonts/fuzzy-bubbles-700.woff2") format("woff2");
+      }
       :root {
         --bg: #0a0a14;
         --panel: #14141e;
@@ -118,6 +130,23 @@
         padding: 0;
         cursor: pointer;
       }
+
+      /* Legal footer (start screen + install gate) */
+      .legal-footer {
+        text-align: center;
+        padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+        font-size: 11px;
+        letter-spacing: 2px;
+        color: var(--muted);
+        flex-shrink: 0;
+      }
+      .legal-footer a {
+        color: var(--muted);
+        text-decoration: underline;
+        text-decoration-color: rgba(122, 122, 146, 0.4);
+      }
+      .legal-footer a:hover { color: var(--fg); }
+      .legal-footer .sep { margin: 0 8px; opacity: 0.5; }
 
       /* Start screen */
       .start {

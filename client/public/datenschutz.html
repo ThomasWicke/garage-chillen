@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+    <title>Datenschutzerklärung — Garage chillen</title>
+    <meta name="theme-color" content="#0a0a14" />
+    <meta name="robots" content="noindex" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <style>
+      @font-face {
+        font-family: "Fuzzy Bubbles";
+        font-style: normal;
+        font-weight: 400;
+        font-display: swap;
+        src: url("/fonts/fuzzy-bubbles-400.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "Fuzzy Bubbles";
+        font-style: normal;
+        font-weight: 700;
+        font-display: swap;
+        src: url("/fonts/fuzzy-bubbles-700.woff2") format("woff2");
+      }
+      :root {
+        --bg: #0a0a14;
+        --panel: #14141e;
+        --fg: #d8d8e8;
+        --muted: #7a7a92;
+        --accent: #abdd64;
+        --border: #2a2a3a;
+      }
+      *, *::before, *::after { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        padding: 0;
+        background: var(--bg);
+        color: var(--fg);
+        font-family: "Fuzzy Bubbles", system-ui, -apple-system, sans-serif;
+        font-weight: 400;
+        line-height: 1.6;
+        min-height: 100dvh;
+      }
+      main {
+        max-width: 720px;
+        margin: 0 auto;
+        padding: 40px 24px 80px;
+      }
+      h1 {
+        font-size: 28px;
+        letter-spacing: 4px;
+        font-weight: 700;
+        margin: 0 0 24px;
+      }
+      h2 {
+        font-size: 18px;
+        letter-spacing: 2px;
+        font-weight: 700;
+        margin: 32px 0 8px;
+        color: var(--accent);
+      }
+      h3 {
+        font-size: 15px;
+        letter-spacing: 1px;
+        font-weight: 700;
+        margin: 20px 0 6px;
+      }
+      p, ul { margin: 0 0 12px; }
+      ul { padding-left: 22px; }
+      li { margin-bottom: 4px; }
+      a { color: var(--accent); }
+      .back {
+        display: inline-block;
+        font-size: 12px;
+        letter-spacing: 2px;
+        text-transform: uppercase;
+        color: var(--muted);
+        text-decoration: none;
+        margin-bottom: 24px;
+      }
+      .back:hover { color: var(--fg); }
+      .muted { color: var(--muted); font-size: 13px; }
+      code {
+        font-family: ui-monospace, SFMono-Regular, monospace;
+        background: var(--panel);
+        padding: 1px 6px;
+        border-radius: 4px;
+        font-size: 0.92em;
+      }
+      address { font-style: normal; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <a class="back" href="/">← zurück</a>
+      <h1>Datenschutzerklärung</h1>
+
+      <p>
+        Diese Datenschutzerklärung informiert Sie über Art, Umfang und Zweck der Verarbeitung personenbezogener
+        Daten beim Besuch und der Nutzung dieser Website („Garage chillen“). Rechtsgrundlage ist die
+        Datenschutz-Grundverordnung (DSGVO) sowie das Bundesdatenschutzgesetz (BDSG) und das Gesetz über den
+        Datenschutz und den Schutz der Privatsphäre in der Telekommunikation und bei Telemedien (TDDDG).
+      </p>
+
+      <h2>1. Verantwortlicher</h2>
+      <address>
+        Thomas Wicke<br />
+        Rosenhof 26<br />
+        50226 Frechen<br />
+        Deutschland<br />
+        E-Mail: <a href="mailto:thomas@bluepic.io">thomas@bluepic.io</a><br />
+        Telefon: +49 157 33866772
+      </address>
+
+      <h2>2. Allgemeines zur Datenverarbeitung</h2>
+      <p>
+        Garage chillen ist ein privat betriebenes Hobby-Projekt. Es werden bewusst so wenige Daten wie möglich
+        verarbeitet. Es gibt kein Nutzerkonto, kein Tracking, keine Analyse-Werkzeuge, keine Werbung und keine
+        Cookies.
+      </p>
+
+      <h2>3. Im Browser gespeicherte Daten (localStorage)</h2>
+      <p>
+        Die Website speichert ausschließlich folgende Informationen lokal in Ihrem Browser
+        (<code>window.localStorage</code>) — diese verlassen Ihr Gerät nicht durch Cookies und werden nur an
+        den Spieleserver übermittelt, soweit dies für den Spielbetrieb erforderlich ist:
+      </p>
+      <ul>
+        <li>
+          <code>gc.identity</code> — eine zufällig erzeugte Pseudonym-ID (UUID), Ihr selbstgewählter
+          Spitzname und die ID Ihres ausgewählten Avatars. Zweck: Sie behalten beim erneuten Öffnen der App
+          dieselbe Spieleridentität und können nach Verbindungsabbruch in eine laufende Runde zurückkehren.
+        </li>
+        <li>
+          <code>gc.bypass-install</code> — ein Flag, das vermerkt, dass Sie den Hinweis zur
+          Home-Screen-Installation übersprungen haben.
+        </li>
+      </ul>
+      <p>
+        Diese lokale Speicherung ist gemäß § 25 Abs. 2 Nr. 2 TDDDG „unbedingt erforderlich“, um den von
+        Ihnen ausdrücklich gewünschten Telemediendienst zur Verfügung zu stellen, und bedarf daher keiner
+        Einwilligung. Sie können die Daten jederzeit über die Einstellungen Ihres Browsers (Website-Daten
+        löschen) entfernen.
+      </p>
+
+      <h2>4. Server-Logs (Hosting)</h2>
+      <p>
+        Beim Aufruf der Website werden durch den Hosting-Anbieter Cloudflare standardmäßig Verbindungsdaten
+        verarbeitet, insbesondere:
+      </p>
+      <ul>
+        <li>IP-Adresse des aufrufenden Geräts</li>
+        <li>Datum und Uhrzeit des Zugriffs</li>
+        <li>aufgerufene URL und HTTP-Statuscode</li>
+        <li>übertragene Datenmenge</li>
+        <li>verwendeter Browser und Betriebssystem (User-Agent)</li>
+      </ul>
+      <p>
+        Diese Daten werden zur Sicherstellung des Betriebs, zur Abwehr von Angriffen und zur Fehleranalyse
+        verarbeitet. Rechtsgrundlage ist Art. 6 Abs. 1 lit. f DSGVO (berechtigtes Interesse am stabilen und
+        sicheren Betrieb der Website). Die Daten werden vom Hosting-Anbieter automatisch nach kurzer Zeit
+        gelöscht oder anonymisiert.
+      </p>
+
+      <h2>5. Multiplayer-Spielbetrieb (PartyKit auf Cloudflare Workers)</h2>
+      <p>
+        Während einer aktiven Spielsitzung wird über eine WebSocket-Verbindung mit dem Spieleserver
+        (PartyKit, betrieben auf Cloudflare Workers) ein Datenaustausch hergestellt. Verarbeitet werden:
+      </p>
+      <ul>
+        <li>die im Browser gespeicherte Pseudonym-ID (UUID)</li>
+        <li>Ihr selbstgewählter Spitzname und Ihre Avatar-Auswahl</li>
+        <li>der vierstellige Lobby-Code</li>
+        <li>spielmechanisch erforderliche Zustände (z. B. Eingaben, Positionen, Punkte)</li>
+        <li>technisch zwangsläufig: die IP-Adresse Ihres Geräts</li>
+      </ul>
+      <p>
+        Rechtsgrundlage ist Art. 6 Abs. 1 lit. b DSGVO (Durchführung des von Ihnen aktiv gestarteten
+        Spielvorgangs) sowie Art. 6 Abs. 1 lit. f DSGVO (berechtigtes Interesse am Betrieb des Dienstes).
+        Spielzustände werden nur für die Dauer der Lobby im Arbeitsspeicher des Servers gehalten und nicht
+        dauerhaft gespeichert.
+      </p>
+
+      <h2>6. Empfänger und Drittlandübermittlung</h2>
+      <p>
+        Hosting und Multiplayer-Backend werden durch <strong>Cloudflare, Inc.</strong> (101 Townsend St.,
+        San Francisco, CA 94107, USA) bzw. deren europäische Tochter <strong>Cloudflare Germany GmbH</strong>
+        erbracht. Im Rahmen der Datenübermittlung in die USA stützen wir uns auf das EU-US Data Privacy
+        Framework (Angemessenheitsbeschluss der EU-Kommission vom 10.07.2023, an dem Cloudflare zertifiziert
+        teilnimmt) sowie auf EU-Standardvertragsklauseln gemäß Art. 46 Abs. 2 lit. c DSGVO. Mit Cloudflare
+        besteht ein Vertrag zur Auftragsverarbeitung nach Art. 28 DSGVO.
+      </p>
+
+      <h2>7. Cookies, Tracking, Analyse, Werbung</h2>
+      <p>
+        Diese Website setzt <strong>keine Cookies</strong>, verwendet <strong>keine Analyse- oder
+        Tracking-Werkzeuge</strong> (z. B. Google Analytics, Plausible, Matomo) und bindet
+        <strong>keine Inhalte Dritter</strong> ein (keine Google Fonts vom Google-CDN, keine
+        Social-Media-Plugins, keine eingebetteten Videos). Schriftarten werden lokal vom eigenen Server
+        ausgeliefert.
+      </p>
+
+      <h2>8. Ihre Rechte als betroffene Person</h2>
+      <p>Sie haben uns gegenüber jederzeit folgende Rechte:</p>
+      <ul>
+        <li>Recht auf Auskunft (Art. 15 DSGVO)</li>
+        <li>Recht auf Berichtigung (Art. 16 DSGVO)</li>
+        <li>Recht auf Löschung (Art. 17 DSGVO)</li>
+        <li>Recht auf Einschränkung der Verarbeitung (Art. 18 DSGVO)</li>
+        <li>Recht auf Datenübertragbarkeit (Art. 20 DSGVO)</li>
+        <li>Widerspruchsrecht gegen die Verarbeitung (Art. 21 DSGVO)</li>
+      </ul>
+      <p>
+        Zur Ausübung Ihrer Rechte genügt eine formlose E-Mail an
+        <a href="mailto:thomas@bluepic.io">thomas@bluepic.io</a>. Da Garage chillen keine dauerhaft
+        gespeicherten Nutzerdaten kennt, können Sie alle clientseitig gespeicherten Daten zudem selbst
+        löschen, indem Sie die Website-Daten in Ihrem Browser entfernen.
+      </p>
+
+      <h2>9. Beschwerderecht bei der Aufsichtsbehörde</h2>
+      <p>
+        Sie haben das Recht, sich bei einer Datenschutz-Aufsichtsbehörde über die Verarbeitung Ihrer
+        personenbezogenen Daten zu beschweren (Art. 77 DSGVO). Für den Verantwortlichen zuständig ist:
+      </p>
+      <address>
+        Landesbeauftragte für Datenschutz und Informationsfreiheit Nordrhein-Westfalen<br />
+        Kavalleriestr. 2–4<br />
+        40213 Düsseldorf<br />
+        <a href="https://www.ldi.nrw.de">www.ldi.nrw.de</a>
+      </address>
+
+      <h2>10. Stand und Änderungen dieser Erklärung</h2>
+      <p>
+        Diese Datenschutzerklärung wird bei Änderungen der Website oder der Rechtslage angepasst. Stand:
+        Mai 2026.
+      </p>
+
+      <p class="muted">
+        Siehe auch: <a href="/impressum.html">Impressum</a>
+      </p>
+    </main>
+  </body>
+</html>

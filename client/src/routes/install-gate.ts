@@ -24,6 +24,11 @@ export function renderInstallGate(onBypass: () => void): void {
       }
       <button class="escape" id="bypass">continue in browser anyway</button>
     </div>
+    <footer class="legal-footer">
+      <a href="/impressum.html">Impressum</a>
+      <span class="sep">·</span>
+      <a href="/datenschutz.html">Datenschutz</a>
+    </footer>
   `;
   document.getElementById("bypass")!.addEventListener("click", onBypass);
 }

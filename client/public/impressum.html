@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+    <title>Impressum — Garage chillen</title>
+    <meta name="theme-color" content="#0a0a14" />
+    <meta name="robots" content="noindex" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <style>
+      @font-face {
+        font-family: "Fuzzy Bubbles";
+        font-style: normal;
+        font-weight: 400;
+        font-display: swap;
+        src: url("/fonts/fuzzy-bubbles-400.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "Fuzzy Bubbles";
+        font-style: normal;
+        font-weight: 700;
+        font-display: swap;
+        src: url("/fonts/fuzzy-bubbles-700.woff2") format("woff2");
+      }
+      :root {
+        --bg: #0a0a14;
+        --panel: #14141e;
+        --fg: #d8d8e8;
+        --muted: #7a7a92;
+        --accent: #abdd64;
+        --border: #2a2a3a;
+      }
+      *, *::before, *::after { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        padding: 0;
+        background: var(--bg);
+        color: var(--fg);
+        font-family: "Fuzzy Bubbles", system-ui, -apple-system, sans-serif;
+        font-weight: 400;
+        line-height: 1.6;
+        min-height: 100dvh;
+      }
+      main {
+        max-width: 640px;
+        margin: 0 auto;
+        padding: 40px 24px 80px;
+      }
+      h1 {
+        font-size: 28px;
+        letter-spacing: 4px;
+        font-weight: 700;
+        margin: 0 0 24px;
+      }
+      h2 {
+        font-size: 18px;
+        letter-spacing: 2px;
+        font-weight: 700;
+        margin: 32px 0 8px;
+        color: var(--accent);
+      }
+      p { margin: 0 0 12px; }
+      a { color: var(--accent); }
+      .back {
+        display: inline-block;
+        font-size: 12px;
+        letter-spacing: 2px;
+        text-transform: uppercase;
+        color: var(--muted);
+        text-decoration: none;
+        margin-bottom: 24px;
+      }
+      .back:hover { color: var(--fg); }
+      .muted { color: var(--muted); font-size: 13px; }
+      address { font-style: normal; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <a class="back" href="/">← zurück</a>
+      <h1>Impressum</h1>
+
+      <h2>Angaben gemäß § 5 TMG</h2>
+      <address>
+        Thomas Wicke<br />
+        Rosenhof 26<br />
+        50226 Frechen<br />
+        Deutschland
+      </address>
+
+      <h2>Kontakt</h2>
+      <p>
+        Telefon: +49 157 33866772<br />
+        E-Mail: <a href="mailto:thomas@bluepic.io">thomas@bluepic.io</a>
+      </p>
+
+      <h2>Verantwortlich für den Inhalt nach § 18 Abs. 2 MStV</h2>
+      <address>
+        Thomas Wicke<br />
+        Rosenhof 26<br />
+        50226 Frechen
+      </address>
+
+      <h2>Haftung für Inhalte</h2>
+      <p>
+        Die Inhalte dieser Seite werden mit Sorgfalt erstellt. Für die Richtigkeit, Vollständigkeit und Aktualität
+        der Inhalte kann jedoch keine Gewähr übernommen werden. Als Diensteanbieter bin ich gemäß § 7 Abs. 1 TMG
+        für eigene Inhalte auf diesen Seiten nach den allgemeinen Gesetzen verantwortlich. Nach §§ 8 bis 10 TMG
+        bin ich als Diensteanbieter jedoch nicht verpflichtet, übermittelte oder gespeicherte fremde Informationen
+        zu überwachen oder nach Umständen zu forschen, die auf eine rechtswidrige Tätigkeit hinweisen.
+      </p>
+
+      <h2>Haftung für Links</h2>
+      <p>
+        Diese Website enthält keine bewusst gesetzten Links zu externen Webseiten Dritter, auf deren Inhalte
+        kein Einfluss genommen werden kann. Für die Inhalte verlinkter Seiten ist stets der jeweilige Anbieter
+        oder Betreiber der Seiten verantwortlich.
+      </p>
+
+      <h2>Hinweis</h2>
+      <p>
+        „Garage chillen“ ist ein privates Hobby-Projekt und wird nicht-gewerblich betrieben.
+      </p>
+
+      <p class="muted">
+        Siehe auch: <a href="/datenschutz.html">Datenschutzerklärung</a>
+      </p>
+    </main>
+  </body>
+</html>

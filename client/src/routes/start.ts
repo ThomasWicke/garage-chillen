@@ -43,6 +43,11 @@ export function renderStart(navigate: (path: string) => void): void {
         </form>
       </div>
     </div>
+    <footer class="legal-footer">
+      <a href="/impressum.html">Impressum</a>
+      <span class="sep">·</span>
+      <a href="/datenschutz.html">Datenschutz</a>
+    </footer>
   `;
 
   const nicknameInput = document.getElementById("nickname") as HTMLInputElement;
