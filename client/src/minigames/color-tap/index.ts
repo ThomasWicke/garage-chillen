@@ -124,6 +124,7 @@ function createColorTapMatchClient(
 
 const ColorTapClient: MiniGameClientDefinition = {
   id: "color-tap",
+  controlsHint: "tap the button matching the flashed color — 3 misses and you're out",
   createMatch: createColorTapMatchClient,
 };
 

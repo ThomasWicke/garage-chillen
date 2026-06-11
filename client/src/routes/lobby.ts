@@ -21,6 +21,7 @@ import { openGamePickerDrawer } from "../ui/game-picker-drawer";
 import { renderLobbyView } from "../ui/lobby-view";
 import { renderPreparingView } from "../ui/preparing-view";
 import { renderRoundResultsView } from "../ui/round-results-view";
+import { renderSessionResultsView } from "../ui/session-results-view";
 import { renderSessionToolbar } from "../ui/session-toolbar";
 import { getMiniGameClient } from "../minigames";
 import "../minigames"; // ensure mini-game client self-registration
@@ -378,6 +379,24 @@ export function renderLobby(rawCode: string): () => void {
           selfPlayerId: state.selfPlayerId,
           isGm,
           dismissAt: state.resultsDismissAt,
+        },
+        sceneEl,
+        {
+          onBackToLobby: () =>
+            conn.send({ scope: "lobby", type: "back-to-lobby" }),
+        },
+      );
+      return;
+    }
+
+    if (state.lobbyState === "session-results") {
+      teardownGamemode();
+      renderSessionResultsView(
+        {
+          players: state.players,
+          scores: state.sessionScores,
+          selfPlayerId: state.selfPlayerId,
+          isGm,
         },
         sceneEl,
         {

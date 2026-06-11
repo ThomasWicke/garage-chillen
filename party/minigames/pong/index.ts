@@ -194,6 +194,11 @@ function createPongMatch(ctx: MatchContext): MatchSession {
   return {
     tick(dt: number) {
       if (state.ended) return;
+      if (Date.now() < ctx.startAt) {
+        // Warm-up: clients render the frozen scene; nothing advances yet.
+        broadcastState();
+        return;
+      }
       if (state.running) stepPhysics(dt);
       if (!state.ended && Date.now() >= ctx.deadlineAt) {
         endMatchByDeadline();
@@ -203,6 +208,7 @@ function createPongMatch(ctx: MatchContext): MatchSession {
     },
     onMessage(playerId, msg) {
       if (state.ended) return;
+      if (Date.now() < ctx.startAt) return; // warm-up: ignore inputs
       if (msg.type === "paddle" && typeof msg.x === "number") {
         const x = clamp(
           msg.x,

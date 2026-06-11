@@ -47,7 +47,7 @@ function createColorTapMatch(ctx: MatchContext): MatchSession {
     round: 0,
     phase: "signal",
     signalColor: COLORS[Math.floor(Math.random() * COLORS.length)],
-    signalEndsAt: Date.now() + INITIAL_WINDOW_MS,
+    signalEndsAt: ctx.startAt + INITIAL_WINDOW_MS, // first window counts from GO
     resultEndsAt: 0,
     windowMs: INITIAL_WINDOW_MS,
     players: new Map(
@@ -195,6 +195,11 @@ function createColorTapMatch(ctx: MatchContext): MatchSession {
         endByDeadline();
         return;
       }
+      if (Date.now() < ctx.startAt) {
+        // Warm-up: clients render the frozen scene; nothing advances yet.
+        broadcastState();
+        return;
+      }
       const now = Date.now();
       if (state.phase === "signal" && now >= state.signalEndsAt) {
         evaluateRound();
@@ -218,6 +223,7 @@ function createColorTapMatch(ctx: MatchContext): MatchSession {
     },
     onMessage(playerId, msg) {
       if (state.ended) return;
+      if (Date.now() < ctx.startAt) return; // warm-up: taps must not count
       if (state.phase !== "signal") return;
       if (msg.type !== "tap-color") return;
       const color = msg.color as Color;

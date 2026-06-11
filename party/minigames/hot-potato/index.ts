@@ -46,11 +46,11 @@ function createHotPotatoMatch(ctx: MatchContext): MatchSession {
     timerExpiresAt: 0,
     pauseUntil: 0,
     lastEliminated: null,
-    startedAt: Date.now(),
+    startedAt: ctx.startAt,
   };
-  // First holder is random.
+  // First holder is random. The hidden timer counts from GO, not creation.
   state.holderId = pickRandom([...state.alivePlayers]);
-  state.timerExpiresAt = Date.now() + randomTimerMs();
+  state.timerExpiresAt = ctx.startAt + randomTimerMs();
 
   ctx.broadcast({
     type: "welcome",
@@ -171,6 +171,11 @@ function createHotPotatoMatch(ctx: MatchContext): MatchSession {
         endByDeadline();
         return;
       }
+      if (Date.now() < ctx.startAt) {
+        // Warm-up: clients render the frozen scene; nothing advances yet.
+        broadcastState();
+        return;
+      }
       const now = Date.now();
       if (state.phase === "live" && state.holderId && now >= state.timerExpiresAt) {
         eliminateHolderTracked();
@@ -181,6 +186,7 @@ function createHotPotatoMatch(ctx: MatchContext): MatchSession {
     },
     onMessage(playerId, msg) {
       if (state.phase !== "live") return;
+      if (Date.now() < ctx.startAt) return; // warm-up: ignore inputs
       if (msg.type !== "pass-potato") return;
       if (state.holderId !== playerId) return;
       // Pass to random other alive player.

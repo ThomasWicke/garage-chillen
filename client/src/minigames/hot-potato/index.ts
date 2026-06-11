@@ -126,6 +126,7 @@ function escapeHtml(s: string): string {
 
 const HotPotatoClient: MiniGameClientDefinition = {
   id: "hot-potato",
+  controlsHint: "got the potato? tap to pass it before it pops!",
   createMatch: createHotPotatoMatchClient,
 };
 

@@ -197,12 +197,18 @@ function createSumoPushMatch(ctx: MatchContext): MatchSession {
         endByDeadline();
         return;
       }
+      if (Date.now() < ctx.startAt) {
+        // Warm-up: clients render the frozen scene; nothing advances yet.
+        broadcastState();
+        return;
+      }
       step(dt);
       if (state.ended) return;
       broadcastState();
     },
     onMessage(playerId, msg) {
       if (state.ended) return;
+      if (Date.now() < ctx.startAt) return; // warm-up: ignore inputs
       if (msg.type !== "lunge") return;
       const dx = typeof msg.dx === "number" ? msg.dx : 0;
       const dy = typeof msg.dy === "number" ? msg.dy : 0;

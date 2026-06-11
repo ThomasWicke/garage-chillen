@@ -38,6 +38,8 @@ import type {
 
 const INTRO_MS = 8_000;
 const BETWEEN_MS = 5_000;
+/** Scene visible but simulation frozen for this long before GO. */
+const WARMUP_MS = 3_000;
 const MATCH_FORCE_GRACE_MS = 5_000;
 
 type Phase = "intro" | "round" | "between" | "complete";
@@ -69,6 +71,8 @@ function createTournamentSession(ctx: GamemodeContext): GamemodeSession {
   let currentRound = 0;
   let phaseTimer: ReturnType<typeof setTimeout> | null = null;
   const activeMatches = new Map<string, ActiveMatch>();
+  /** Server-time when the current round's matches start simulating. */
+  let roundGoAt: number | null = null;
   let ended = false;
 
   const playerById = new Map<string, MiniGamePlayer>();
@@ -84,6 +88,7 @@ function createTournamentSession(ctx: GamemodeContext): GamemodeSession {
       type: "bracket-state",
       phase,
       currentRound,
+      goAt: phase === "round" ? roundGoAt : null,
       phaseEndsAt: phase === "intro" || phase === "between" ? phaseEndsAt : null,
       bracket: toPublicBracket(bracket),
       activeMatches: [...activeMatches.values()].map((m) => ({
@@ -145,6 +150,9 @@ function createTournamentSession(ctx: GamemodeContext): GamemodeSession {
     phase = "round";
     setEveryoneClicker(true);
     const now = Date.now();
+    // Scene mounts immediately; simulation starts after the warm-up overlay.
+    const startAt = now + WARMUP_MS;
+    roundGoAt = startAt;
 
     type Plan = {
       bracketMatch: BracketMatch;
@@ -176,7 +184,8 @@ function createTournamentSession(ctx: GamemodeContext): GamemodeSession {
         bracketMatch: m,
         participants,
         participantIds,
-        deadlineAt: now + ctx.miniGame.matchTimeoutMs,
+        // Warm-up doesn't eat into play time.
+        deadlineAt: startAt + ctx.miniGame.matchTimeoutMs,
       });
     }
 
@@ -213,6 +222,7 @@ function createTournamentSession(ctx: GamemodeContext): GamemodeSession {
         matchId: plan.bracketMatch.matchId,
         players: plan.participants,
         deadlineAt: plan.deadlineAt,
+        startAt,
         broadcast: (msg) => {
           if (msg.type === "welcome") am.welcomeMsg = msg;
           ctx.broadcastMatch(plan.bracketMatch.matchId, plan.participantIds, msg);

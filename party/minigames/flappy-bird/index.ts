@@ -61,7 +61,7 @@ function createFlappyBirdMatch(ctx: MatchContext): MatchSession {
     birds: new Map(),
     pipes: [],
     pipeIdCounter: 0,
-    startedAt: Date.now(),
+    startedAt: ctx.startAt, // initial pipe delay counts from GO, not creation
     ended: false,
   };
   for (const p of players) {
@@ -251,12 +251,18 @@ function createFlappyBirdMatch(ctx: MatchContext): MatchSession {
         endByDeadline();
         return;
       }
+      if (Date.now() < ctx.startAt) {
+        // Warm-up: clients render the frozen scene; nothing advances yet.
+        broadcastState();
+        return;
+      }
       step(dt);
       if (state.ended) return;
       broadcastState();
     },
     onMessage(playerId, msg) {
       if (state.ended) return;
+      if (Date.now() < ctx.startAt) return; // warm-up: ignore inputs
       if (msg.type === "flap") {
         const b = state.birds.get(playerId);
         if (!b || !b.alive) return;

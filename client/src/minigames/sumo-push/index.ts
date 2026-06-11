@@ -227,6 +227,7 @@ function createSumoPushMatchClient(
 
 const SumoPushClient: MiniGameClientDefinition = {
   id: "sumo-push",
+  controlsHint: "drag from your wrestler & release to lunge — you start at the bottom",
   createMatch: createSumoPushMatchClient,
 };
 

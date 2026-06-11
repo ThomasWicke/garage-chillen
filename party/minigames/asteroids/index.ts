@@ -274,6 +274,11 @@ function createAsteroidsMatch(ctx: MatchContext): MatchSession {
   return {
     tick(dt: number) {
       if (state.ended) return;
+      if (Date.now() < ctx.startAt) {
+        // Warm-up: clients render the frozen scene; nothing advances yet.
+        broadcastState();
+        return;
+      }
       if (state.running) {
         updateShip(state.ships.p1, dt);
         updateShip(state.ships.p2, dt);
@@ -289,6 +294,7 @@ function createAsteroidsMatch(ctx: MatchContext): MatchSession {
     },
     onMessage(playerId, msg) {
       if (state.ended) return;
+      if (Date.now() < ctx.startAt) return; // warm-up: ignore inputs
       const ship =
         playerId === p1.playerId
           ? state.ships.p1

@@ -18,6 +18,7 @@ import type {
   MatchClientContext,
   MatchClientSession,
 } from "../../minigames/types";
+import { showWarmupOverlay } from "../../ui/warmup-overlay";
 import { registerGamemodeClient } from "../registry";
 import type {
   GamemodeClientContext,
@@ -51,6 +52,9 @@ type BracketStateMsg = {
   phase: Phase;
   currentRound: number;
   phaseEndsAt: number | null;
+  /** Server-time when the current round's matches start simulating;
+   *  warm-up overlay until then. */
+  goAt: number | null;
   bracket: PublicBracket;
   activeMatches: ActiveMatchInfo[];
 };
@@ -71,6 +75,7 @@ function createTournamentClientSession(
   let activeMatchSession: MatchClientSession | null = null;
   let activeMatchId: string | null = null;
   let countdownTimer: ReturnType<typeof setInterval> | null = null;
+  let warmupCleanup: (() => void) | null = null;
   /**
    * Cached welcome message per matchId. Match servers broadcast welcome
    * once at match start — clients that mount the match scene LATER (e.g.
@@ -230,9 +235,20 @@ function createTournamentClientSession(
         console.error("[tournament] welcome replay error", e);
       }
     }
+    if (bracketState?.goAt && bracketState.goAt > Date.now()) {
+      warmupCleanup = showWarmupOverlay(
+        matchEl,
+        bracketState.goAt,
+        ctx.miniGame.controlsHint ?? null,
+      );
+    }
   }
 
   function unmountMatch() {
+    if (warmupCleanup) {
+      warmupCleanup();
+      warmupCleanup = null;
+    }
     if (activeMatchSession) {
       try {
         activeMatchSession.unmount();

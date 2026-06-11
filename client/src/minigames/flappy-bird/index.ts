@@ -14,6 +14,7 @@ import type {
   PosComp,
   RectComp,
   SpriteComp,
+  TextComp,
 } from "kaplay";
 import { avatarSrc } from "../../identity";
 import { registerMiniGameClient } from "../registry";
@@ -41,6 +42,7 @@ type StateMsg = {
 
 type BirdSprite = GameObj<PosComp | SpriteComp | AnchorComp | OpacityComp>;
 type PipeSprite = GameObj<PosComp | RectComp | ColorComp | AnchorComp>;
+type MarkerSprite = GameObj<PosComp | TextComp | ColorComp | AnchorComp>;
 
 const GHOST_OPACITY = 0.4;
 
@@ -68,6 +70,10 @@ function createFlappyBirdMatchClient(
   const birdSprites = new Map<string, BirdSprite>();
   const pipeSprites = new Map<number, { top: PipeSprite; bottom: PipeSprite }>();
   let players: WelcomeMsg["players"] = [];
+  // "YOU" tag above the own bird for the first seconds — in a full flock
+  // it takes a moment too long to spot your own avatar.
+  let youMarker: MarkerSprite | null = null;
+  let youMarkerUntil = 0;
 
   function buildScene(welcome: WelcomeMsg) {
     if (k) return;
@@ -127,6 +133,15 @@ function createFlappyBirdMatchClient(
       }
     });
 
+    if (!ctx.isSpectator) {
+      youMarker = kk.add([
+        kk.text("▼ YOU", { size: 18 }),
+        kk.pos(-99, -99),
+        kk.color(40, 40, 60),
+        kk.anchor("bot"),
+      ]);
+    }
+
     // Tap / click to flap.
     const flap = (e?: Event) => {
       if (e) {
@@ -140,6 +155,8 @@ function createFlappyBirdMatchClient(
 
   function applyWelcome(msg: WelcomeMsg) {
     statusEl.textContent = "tap anywhere to flap";
+    // Keep the tag visible through warm-up and the first seconds of play.
+    youMarkerUntil = Date.now() + 7_000;
     buildScene(msg);
   }
 
@@ -206,6 +223,17 @@ function createFlappyBirdMatchClient(
       : myBird.alive
         ? ""
         : "you died · keep watching";
+
+    // Float the "YOU" tag above the own bird while it's active.
+    if (youMarker) {
+      if (!myBird || !myBird.alive || Date.now() > youMarkerUntil) {
+        youMarker.hidden = true;
+      } else {
+        youMarker.hidden = false;
+        youMarker.pos.x = birdX;
+        youMarker.pos.y = Math.max(20, myBird.y - birdRadius * 1.4 - 4);
+      }
+    }
   }
 
   return {
@@ -222,6 +250,7 @@ function createFlappyBirdMatchClient(
       k = null;
       birdSprites.clear();
       pipeSprites.clear();
+      youMarker = null;
       ctx.container.innerHTML = "";
     },
   };
@@ -229,6 +258,7 @@ function createFlappyBirdMatchClient(
 
 const FlappyBirdClient: MiniGameClientDefinition = {
   id: "flappy-bird",
+  controlsHint: "tap anywhere to flap — your avatar is the solid bird",
   createMatch: createFlappyBirdMatchClient,
 };
 

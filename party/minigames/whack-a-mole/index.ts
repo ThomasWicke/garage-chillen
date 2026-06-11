@@ -45,8 +45,8 @@ function createWhackAMoleMatch(ctx: MatchContext): MatchSession {
     moles: [],
     moleIdCounter: 0,
     scores: new Map(players.map((p) => [p.playerId, 0])),
-    startedAt: Date.now(),
-    endsAt: Date.now() + DURATION_MS,
+    startedAt: ctx.startAt, // 30s play window counts from GO, not creation
+    endsAt: ctx.startAt + DURATION_MS,
     lastSpawnAt: 0,
     ended: false,
   };
@@ -175,12 +175,18 @@ function createWhackAMoleMatch(ctx: MatchContext): MatchSession {
         endByDeadline();
         return;
       }
+      if (Date.now() < ctx.startAt) {
+        // Warm-up: clients render the frozen scene; nothing advances yet.
+        broadcastState();
+        return;
+      }
       step();
       if (state.ended) return;
       broadcastState();
     },
     onMessage(playerId, msg) {
       if (state.ended) return;
+      if (Date.now() < ctx.startAt) return; // warm-up: ignore inputs
       if (msg.type !== "whack") return;
       const moleId = typeof msg.moleId === "number" ? msg.moleId : null;
       if (moleId === null) return;

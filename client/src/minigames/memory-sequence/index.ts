@@ -140,6 +140,7 @@ function createMemorySequenceMatchClient(
 
 const MemorySequenceClient: MiniGameClientDefinition = {
   id: "memory-sequence",
+  controlsHint: "watch the flashes, then repeat them in order",
   createMatch: createMemorySequenceMatchClient,
 };
 

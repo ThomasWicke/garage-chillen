@@ -225,6 +225,7 @@ function createAirHockeyMatchClient(
 
 const AirHockeyClient: MiniGameClientDefinition = {
   id: "air-hockey",
+  controlsHint: "drag to move your paddle — you defend the BOTTOM goal",
   createMatch: createAirHockeyMatchClient,
 };
 

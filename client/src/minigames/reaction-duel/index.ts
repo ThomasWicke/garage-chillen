@@ -137,6 +137,7 @@ function createReactionDuelMatchClient(
 
 const ReactionDuelClient: MiniGameClientDefinition = {
   id: "reaction-duel",
+  controlsHint: "wait for GREEN, then tap fast — tapping early loses the round",
   createMatch: createReactionDuelMatchClient,
 };
 

@@ -87,7 +87,10 @@ function createMemorySequenceMatch(ctx: MatchContext): MatchSession {
     }
     state.phase = "show";
     state.showIdx = 0;
-    state.showStepEndsAt = Date.now() + FLASH_MS;
+    // Round 1 is scheduled at creation, during warm-up — anchor it to startAt
+    // so the first flash counts from GO. Later rounds happen during play,
+    // where Date.now() is already past startAt.
+    state.showStepEndsAt = Math.max(Date.now(), ctx.startAt) + FLASH_MS;
     state.inputDeadline = 0;
     state.resultEndsAt = 0;
     for (const p of state.players.values()) {
@@ -130,11 +133,9 @@ function createMemorySequenceMatch(ctx: MatchContext): MatchSession {
   }
 
   // Show-phase state machine: showIdx = which cell of the sequence we're
-  // currently flashing; inFlash = true when the cell is lit, false during
-  // the gap before the next flash.
+  // currently flashing (set by startNextRound); inFlash = true when the cell
+  // is lit, false during the gap before the next flash.
   let inFlash = true;
-  state.showIdx = 0;
-  state.showStepEndsAt = Date.now() + FLASH_MS;
 
   function startInputPhase(now: number) {
     state.phase = "input";
@@ -219,6 +220,11 @@ function createMemorySequenceMatch(ctx: MatchContext): MatchSession {
         endByDeadline();
         return;
       }
+      if (Date.now() < ctx.startAt) {
+        // Warm-up: clients render the frozen scene; nothing advances yet.
+        broadcastState();
+        return;
+      }
       const now = Date.now();
       if (state.phase === "show" && now >= state.showStepEndsAt) {
         if (inFlash) {
@@ -267,6 +273,7 @@ function createMemorySequenceMatch(ctx: MatchContext): MatchSession {
     },
     onMessage(playerId, msg) {
       if (state.phase !== "input") return;
+      if (Date.now() < ctx.startAt) return; // warm-up: ignore inputs
       if (msg.type !== "tap-cell") return;
       const cellIdx = typeof msg.index === "number" ? msg.index : null;
       if (cellIdx === null || cellIdx < 0 || cellIdx >= GRID_SIZE) return;

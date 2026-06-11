@@ -115,7 +115,7 @@ function createTronArenaMatch(ctx: MatchContext): MatchSession {
     bikes: new Map(),
     occupied: new Set(),
     step: 0,
-    lastStepAt: Date.now(),
+    lastStepAt: ctx.startAt, // first grid step lands one interval after GO
     ended: false,
   };
   for (let i = 0; i < players.length; i++) {
@@ -290,6 +290,11 @@ function createTronArenaMatch(ctx: MatchContext): MatchSession {
         endByDeadline();
         return;
       }
+      if (Date.now() < ctx.startAt) {
+        // Warm-up: clients render the frozen scene; nothing advances yet.
+        broadcastState();
+        return;
+      }
       const now = Date.now();
       if (now - state.lastStepAt >= STEP_INTERVAL_MS) {
         state.lastStepAt = now;
@@ -300,6 +305,7 @@ function createTronArenaMatch(ctx: MatchContext): MatchSession {
     },
     onMessage(playerId, msg) {
       if (state.ended) return;
+      if (Date.now() < ctx.startAt) return; // warm-up: ignore inputs
       if (msg.type !== "turn") return;
       const side = msg.side as "left" | "right";
       if (side !== "left" && side !== "right") return;

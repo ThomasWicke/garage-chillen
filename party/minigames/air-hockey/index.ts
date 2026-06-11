@@ -254,12 +254,18 @@ function createAirHockeyMatch(ctx: MatchContext): MatchSession {
         endByDeadline();
         return;
       }
+      if (Date.now() < ctx.startAt) {
+        // Warm-up: clients render the frozen scene; nothing advances yet.
+        broadcastState();
+        return;
+      }
       step(dt);
       if (state.ended) return;
       broadcastState();
     },
     onMessage(playerId, msg) {
       if (state.ended) return;
+      if (Date.now() < ctx.startAt) return; // warm-up: ignore inputs
       if (msg.type !== "move-paddle") return;
       const x = typeof msg.x === "number" ? msg.x : null;
       const y = typeof msg.y === "number" ? msg.y : null;

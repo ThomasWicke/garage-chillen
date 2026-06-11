@@ -9,6 +9,7 @@ import type {
   GameObj,
   PosComp,
   RectComp,
+  TextComp,
 } from "kaplay";
 import { registerMiniGameClient } from "../registry";
 import type {
@@ -18,6 +19,7 @@ import type {
 } from "../types";
 
 type Sprite = GameObj<PosComp | RectComp | ColorComp | AnchorComp>;
+type MarkerSprite = GameObj<PosComp | TextComp | ColorComp | AnchorComp>;
 type Role = "p1" | "p2" | "spectator";
 type Dir = "up" | "down" | "left" | "right";
 type Cell = { x: number; y: number };
@@ -64,6 +66,10 @@ function createLightCyclesMatchClient(
   type KaplayCtx = ReturnType<typeof kaplay>;
   let k: KaplayCtx | null = null;
   const cellPool: Sprite[] = [];
+  // "YOU" tag above the own bike for the first seconds — both bikes look
+  // identical in motion, so first-timers can't tell which is theirs.
+  let youMarker: MarkerSprite | null = null;
+  let youMarkerUntil = 0;
 
   function flipY(y: number): number {
     return role === "p1" ? rows - 1 - y : y;
@@ -109,6 +115,15 @@ function createLightCyclesMatchClient(
         k.anchor("topleft"),
       ]);
       cellPool.push(s);
+    }
+
+    if (!ctx.isSpectator) {
+      youMarker = k.add([
+        k.text("▼ YOU", { size: 18 }),
+        k.pos(-99, -99),
+        k.color(255, 255, 255),
+        k.anchor("bot"),
+      ]);
     }
 
     if (!ctx.isSpectator) {
@@ -196,6 +211,18 @@ function createLightCyclesMatchClient(
     } else {
       statusEl.textContent = "";
     }
+
+    // Float the "YOU" tag above the own bike while it's active.
+    if (youMarker) {
+      const myAlive = role === "p2" ? msg.bikes.p2.alive : msg.bikes.p1.alive;
+      if (role === "spectator" || !myAlive || Date.now() > youMarkerUntil) {
+        youMarker.hidden = true;
+      } else {
+        youMarker.hidden = false;
+        youMarker.pos.x = flipX(myHead.x) * cellW + cellW / 2;
+        youMarker.pos.y = Math.max(20, flipY(myHead.y) * cellH - 6);
+      }
+    }
   }
 
   function applyWelcome(msg: WelcomeMsg) {
@@ -206,6 +233,8 @@ function createLightCyclesMatchClient(
       role === "spectator"
         ? `${msg.players.p1.nickname} vs ${msg.players.p2.nickname}`
         : "tap left/right to turn";
+    // Keep the tag visible through warm-up and the first seconds of play.
+    youMarkerUntil = Date.now() + 7_000;
     buildScene(msg);
   }
 
@@ -222,6 +251,7 @@ function createLightCyclesMatchClient(
       }
       k = null;
       cellPool.length = 0;
+      youMarker = null;
       ctx.container.innerHTML = "";
     },
   };
@@ -229,6 +259,7 @@ function createLightCyclesMatchClient(
 
 const LightCyclesClient: MiniGameClientDefinition = {
   id: "light-cycles",
+  controlsHint: "tap LEFT or RIGHT to turn — your bike starts at the bottom",
   createMatch: createLightCyclesMatchClient,
 };
 

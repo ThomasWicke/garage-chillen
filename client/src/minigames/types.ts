@@ -39,5 +39,8 @@ export type MatchClientSession = {
 
 export type MiniGameClientDefinition = {
   id: string;
+  /** One-line "how to play" shown on the warm-up overlay before GO,
+   *  e.g. "tap to flap". Keep it short — first-timers read it in 3 seconds. */
+  controlsHint?: string;
   createMatch: (ctx: MatchClientContext) => MatchClientSession;
 };

@@ -45,6 +45,9 @@ const PREPARE_COUNTDOWN_MS = 3_000;
 const ROUND_RESULTS_AUTO_DISMISS_MS = 8_000;
 const ROUND_RESULTS_AUTO_DISMISS_SHUFFLE_MS = 4_000;
 const SEQUENCE_AUTOSTART_MS = 7_000;
+/** How long the final-standings podium stays up after a shuffle run ends
+ *  (GM can dismiss earlier). */
+const SESSION_RESULTS_AUTO_DISMISS_MS = 20_000;
 
 type SequenceState = {
   /** Original (full) shuffle plan; unchanged for the run. Used to compute
@@ -510,6 +513,10 @@ export default class LobbyServer implements Party.Server {
       clearTimeout(this.resultsAutoDismissTimer);
       this.resultsAutoDismissTimer = null;
     }
+    if (this.sessionResultsTimer) {
+      clearTimeout(this.sessionResultsTimer);
+      this.sessionResultsTimer = null;
+    }
     if (this.active) {
       if (this.active.tickHandle) clearInterval(this.active.tickHandle);
       try {
@@ -575,17 +582,15 @@ export default class LobbyServer implements Party.Server {
       }
       // Otherwise: skip and try the next.
     }
-    // Queue exhausted.
-    this.endSequence();
-    this.broadcastLobbyState();
+    // Queue exhausted — the run is over, show the finale.
+    this.showSessionResults();
   }
 
   private scheduleNextInSequence() {
     if (!this.sequence || this.sequence.paused) return;
     if (this.sequence.cursor >= this.sequence.plan.length) {
-      // No more games — finish the run.
-      this.endSequence();
-      this.broadcastLobbyState();
+      // No more games — the run is over, show the finale.
+      this.showSessionResults();
       return;
     }
     if (this.sequence.autoStartTimer) {
@@ -631,6 +636,26 @@ export default class LobbyServer implements Party.Server {
       clearTimeout(this.sequence.autoStartTimer);
     }
     this.sequence = null;
+  }
+
+  /** A shuffle run finished all its games — show the final standings
+   *  before returning to the idle lobby. */
+  private sessionResultsTimer: ReturnType<typeof setTimeout> | null = null;
+
+  private showSessionResults() {
+    this.endSequence();
+    if (this.state !== "idle") {
+      // Defensive: only enter the finale from the inter-round lobby.
+      this.broadcastLobbyState();
+      return;
+    }
+    this.state = "session-results";
+    this.broadcastLobbyState();
+    if (this.sessionResultsTimer) clearTimeout(this.sessionResultsTimer);
+    this.sessionResultsTimer = setTimeout(
+      () => this.transitionToIdle(),
+      SESSION_RESULTS_AUTO_DISMISS_MS,
+    );
   }
 
   private buildSequencePublic(): SequencePublicState | undefined {

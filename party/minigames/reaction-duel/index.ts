@@ -72,7 +72,10 @@ function createReactionDuelMatch(ctx: MatchContext): MatchSession {
   function scheduleArmed() {
     const delay = MIN_DELAY_MS + Math.random() * (MAX_DELAY_MS - MIN_DELAY_MS);
     state.phase = "armed";
-    state.signalAt = Date.now() + delay;
+    // First round is scheduled at creation, during warm-up — anchor it to
+    // startAt so the random delay counts from GO. Later rounds happen during
+    // play, where Date.now() is already past startAt.
+    state.signalAt = Math.max(Date.now(), ctx.startAt) + delay;
     state.phaseEndsAt = state.signalAt;
     state.tapped = { p1: false, p2: false };
     state.roundResult = null;
@@ -162,6 +165,11 @@ function createReactionDuelMatch(ctx: MatchContext): MatchSession {
         endByDeadline();
         return;
       }
+      if (Date.now() < ctx.startAt) {
+        // Warm-up: clients render the frozen scene; nothing advances yet.
+        broadcastState();
+        return;
+      }
       const now = Date.now();
       if (state.phase === "armed" && now >= state.signalAt) {
         state.phase = "go";
@@ -178,6 +186,8 @@ function createReactionDuelMatch(ctx: MatchContext): MatchSession {
     onMessage(playerId, msg) {
       if (msg.type !== "tap") return;
       if (state.phase === "ended") return;
+      // Warm-up taps must NOT count as early taps.
+      if (Date.now() < ctx.startAt) return;
       const slot = playerId === p1.playerId ? "p1" : playerId === p2.playerId ? "p2" : null;
       if (!slot) return;
       if (state.tapped[slot]) return;

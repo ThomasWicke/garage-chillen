@@ -9,6 +9,7 @@ import type {
   GameObj,
   PosComp,
   RectComp,
+  TextComp,
 } from "kaplay";
 import { registerMiniGameClient } from "../registry";
 import type {
@@ -18,6 +19,7 @@ import type {
 } from "../types";
 
 type Sprite = GameObj<PosComp | RectComp | ColorComp | AnchorComp>;
+type MarkerSprite = GameObj<PosComp | TextComp | ColorComp | AnchorComp>;
 type Dir = "up" | "down" | "left" | "right";
 type Cell = { x: number; y: number };
 
@@ -98,6 +100,10 @@ function createTronArenaMatchClient(
   type KaplayCtx = ReturnType<typeof kaplay>;
   let k: KaplayCtx | null = null;
   const cellPool: Sprite[] = [];
+  // "YOU" tag above the own bike for the first seconds — with up to 16
+  // same-shaped bikes, hashed colors alone aren't enough to find yourself.
+  let youMarker: MarkerSprite | null = null;
+  let youMarkerUntil = 0;
 
   function buildScene(welcome: WelcomeMsg) {
     if (k) return;
@@ -134,6 +140,15 @@ function createTronArenaMatchClient(
         k.anchor("topleft"),
       ]);
       cellPool.push(s);
+    }
+
+    if (!ctx.isSpectator) {
+      youMarker = k.add([
+        k.text("▼ YOU", { size: 18 }),
+        k.pos(-99, -99),
+        k.color(255, 255, 255),
+        k.anchor("bot"),
+      ]);
     }
 
     if (!ctx.isSpectator) {
@@ -213,6 +228,17 @@ function createTronArenaMatchClient(
     } else {
       statusEl.textContent = "spectating";
     }
+
+    // Float the "YOU" tag above the own bike while it's active.
+    if (youMarker) {
+      if (!me || !me.alive || Date.now() > youMarkerUntil) {
+        youMarker.hidden = true;
+      } else {
+        youMarker.hidden = false;
+        youMarker.pos.x = me.head.x * cellW + cellW / 2;
+        youMarker.pos.y = Math.max(20, me.head.y * cellH - 6);
+      }
+    }
     const aliveCount = Object.values(msg.bikes).filter((b) => b.alive).length;
     const total = Object.keys(msg.bikes).length;
     ctx.setMatchScore(`${aliveCount}/${total} alive`);
@@ -222,6 +248,8 @@ function createTronArenaMatchClient(
     statusEl.textContent = ctx.isSpectator
       ? "spectating"
       : "tap left/right to turn";
+    // Keep the tag visible through warm-up and the first seconds of play.
+    youMarkerUntil = Date.now() + 7_000;
     buildScene(msg);
   }
 
@@ -238,6 +266,7 @@ function createTronArenaMatchClient(
       }
       k = null;
       cellPool.length = 0;
+      youMarker = null;
       ctx.container.innerHTML = "";
     },
   };
@@ -245,6 +274,7 @@ function createTronArenaMatchClient(
 
 const TronArenaClient: MiniGameClientDefinition = {
   id: "tron-arena",
+  controlsHint: "tap LEFT or RIGHT to turn — look for the YOU tag",
   createMatch: createTronArenaMatchClient,
 };
 

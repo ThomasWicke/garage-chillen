@@ -12,6 +12,7 @@ import type {
   MatchClientContext,
   MatchClientSession,
 } from "../../minigames/types";
+import { showWarmupOverlay } from "../../ui/warmup-overlay";
 import { registerGamemodeClient } from "../registry";
 import type {
   GamemodeClientContext,
@@ -25,6 +26,8 @@ type LmsState = {
   type: "lms-state";
   phase: Phase;
   phaseEndsAt: number | null;
+  /** Server-time when the match simulation starts; warm-up overlay until then. */
+  goAt: number | null;
   matchId: string;
   players: { playerId: string; nickname: string; avatarId: string }[];
 };
@@ -45,6 +48,7 @@ function createLmsClientSession(
   let activeMatchSession: MatchClientSession | null = null;
   let activeMatchId: string | null = null;
   let countdownTimer: ReturnType<typeof setInterval> | null = null;
+  let warmupCleanup: (() => void) | null = null;
 
   function isParticipant(): boolean {
     if (!lmsState) return false;
@@ -99,10 +103,22 @@ function createLmsClientSession(
       console.error("[lms] match create err", e);
       activeMatchSession = null;
       activeMatchId = null;
+      return;
+    }
+    if (lmsState?.goAt && lmsState.goAt > Date.now()) {
+      warmupCleanup = showWarmupOverlay(
+        matchEl,
+        lmsState.goAt,
+        ctx.miniGame.controlsHint ?? null,
+      );
     }
   }
 
   function unmountMatch() {
+    if (warmupCleanup) {
+      warmupCleanup();
+      warmupCleanup = null;
+    }
     if (activeMatchSession) {
       try {
         activeMatchSession.unmount();

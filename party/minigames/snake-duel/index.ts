@@ -81,7 +81,7 @@ function createSnakeDuelMatch(ctx: MatchContext): MatchSession {
     p2: freshSnake(SNAKE_GRID_COLS - 1 - spawnCol, SNAKE_GRID_ROWS - 6, "up"),
     food: [],
     step: 0,
-    lastStepAt: Date.now(),
+    lastStepAt: ctx.startAt, // first grid step lands one interval after GO
     ended: false,
   };
   for (let i = 0; i < FOOD_COUNT; i++) spawnFood(state);
@@ -236,6 +236,11 @@ function createSnakeDuelMatch(ctx: MatchContext): MatchSession {
         endByDeadline();
         return;
       }
+      if (Date.now() < ctx.startAt) {
+        // Warm-up: clients render the frozen scene; nothing advances yet.
+        broadcastState();
+        return;
+      }
       const now = Date.now();
       if (now - state.lastStepAt >= STEP_INTERVAL_MS) {
         state.lastStepAt = now;
@@ -246,6 +251,7 @@ function createSnakeDuelMatch(ctx: MatchContext): MatchSession {
     },
     onMessage(playerId, msg) {
       if (state.ended) return;
+      if (Date.now() < ctx.startAt) return; // warm-up: ignore inputs
       if (msg.type !== "set-direction") return;
       const dir = msg.dir as Dir;
       if (!["up", "down", "left", "right"].includes(dir)) return;

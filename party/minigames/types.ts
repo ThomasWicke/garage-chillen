@@ -36,6 +36,13 @@ export type MatchContext = {
    *  this time (e.g. "leader-wins on timeout"); past it, the gamemode force-
    *  ends the match. Mini-games can use this for an on-screen clock. */
   deadlineAt: number;
+  /** Server-time (ms) when play begins. Between creation and startAt the
+   *  match is in WARM-UP: clients show the live scene behind a 3-2-1-GO
+   *  overlay. The match must (a) anchor its initial phase timers to startAt
+   *  rather than Date.now(), (b) not advance its simulation before startAt
+   *  (but keep broadcasting state so clients can render the frozen scene),
+   *  and (c) ignore gameplay inputs received before startAt. */
+  startAt: number;
   /** Broadcast a match-level message to this match's participants. The
    *  gamemode tags it with matchId before sending on the wire. */
   broadcast: (msg: { type: string; [k: string]: unknown }) => void;

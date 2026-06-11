@@ -10,6 +10,7 @@ import type {
   GameObj,
   PosComp,
   RectComp,
+  TextComp,
 } from "kaplay";
 import { registerMiniGameClient } from "../registry";
 import type {
@@ -19,6 +20,7 @@ import type {
 } from "../types";
 
 type Sprite = GameObj<PosComp | RectComp | ColorComp | AnchorComp>;
+type MarkerSprite = GameObj<PosComp | TextComp | ColorComp | AnchorComp>;
 type Role = "p1" | "p2" | "spectator";
 type Dir = "up" | "down" | "left" | "right";
 type Cell = { x: number; y: number };
@@ -70,6 +72,11 @@ function createSnakeDuelMatchClient(
   // Pool of grid-cell sprites — one per max possible cell. We just
   // toggle visibility and color each frame.
   const cellPool: Sprite[] = [];
+  // "YOU" tag floating above the own snake's head for the first seconds —
+  // both snakes start moving at once, so without it players can't tell
+  // which one is theirs until it's too late.
+  let youMarker: MarkerSprite | null = null;
+  let youMarkerUntil = 0;
 
   // p1 view flip (180° vertical) so own snake is at bottom for p1.
   function flipY(y: number): number {
@@ -132,6 +139,15 @@ function createSnakeDuelMatchClient(
         k.anchor("topleft"),
       ]);
       cellPool.push(s);
+    }
+
+    if (!ctx.isSpectator) {
+      youMarker = k.add([
+        k.text("▼ YOU", { size: 18 }),
+        k.pos(-99, -99),
+        k.color(255, 255, 255),
+        k.anchor("bot"),
+      ]);
     }
 
     // Swipe handling.
@@ -227,6 +243,19 @@ function createSnakeDuelMatchClient(
     } else {
       statusEl.textContent = myAlive ? "" : "you died";
     }
+
+    // Float the "YOU" tag above the own head while it's active.
+    if (youMarker) {
+      const head = myCells[0];
+      if (role === "spectator" || !myAlive || !head || Date.now() > youMarkerUntil) {
+        youMarker.hidden = true;
+      } else {
+        youMarker.hidden = false;
+        youMarker.pos.x = flipX(head.x) * cellW + cellW / 2;
+        youMarker.pos.y = Math.max(20, flipY(head.y) * cellH - 6);
+      }
+    }
+
     ctx.setMatchScore(`${msg.snakes.p1.cells.length} – ${msg.snakes.p2.cells.length}`);
   }
 
@@ -238,6 +267,8 @@ function createSnakeDuelMatchClient(
       role === "spectator"
         ? `${msg.players.p1.nickname} vs ${msg.players.p2.nickname}`
         : "swipe to turn";
+    // Keep the tag visible through warm-up and the first seconds of play.
+    youMarkerUntil = Date.now() + 7_000;
     buildScene(msg);
   }
 
@@ -254,6 +285,7 @@ function createSnakeDuelMatchClient(
       }
       k = null;
       cellPool.length = 0;
+      youMarker = null;
       ctx.container.innerHTML = "";
     },
   };
@@ -261,6 +293,7 @@ function createSnakeDuelMatchClient(
 
 const SnakeDuelClient: MiniGameClientDefinition = {
   id: "snake-duel",
+  controlsHint: "swipe to steer — your snake starts at the bottom",
   createMatch: createSnakeDuelMatchClient,
 };
 

@@ -240,6 +240,7 @@ function createPongMatchClient(ctx: MatchClientContext): MatchClientSession {
 
 const PongClient: MiniGameClientDefinition = {
   id: "pong",
+  controlsHint: "drag to move — you're the BOTTOM paddle",
   createMatch: createPongMatchClient,
 };
 

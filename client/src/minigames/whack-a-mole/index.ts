@@ -203,6 +203,7 @@ function createWhackAMoleMatchClient(
 
 const WhackAMoleClient: MiniGameClientDefinition = {
   id: "whack-a-mole",
+  controlsHint: "tap the moles before they vanish — most hits wins",
   createMatch: createWhackAMoleMatchClient,
 };
 

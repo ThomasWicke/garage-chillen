@@ -393,6 +393,7 @@ function createAsteroidsMatchClient(
 
 const AsteroidsClient: MiniGameClientDefinition = {
   id: "asteroids",
+  controlsHint: "hold to steer & thrust · FIRE button shoots",
   createMatch: createAsteroidsMatchClient,
 };
 

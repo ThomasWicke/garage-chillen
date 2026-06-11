@@ -24,7 +24,11 @@ import type {
   MiniGamePlayer,
 } from "../types";
 
-const INTRO_MS = 5_000;
+// Roster intro is short — the warm-up phase that follows shows the actual
+// game scene behind a 3-2-1-GO overlay, which is the real "get ready" time.
+const INTRO_MS = 3_000;
+/** Scene visible but simulation frozen for this long before GO. */
+const WARMUP_MS = 3_000;
 const MATCH_FORCE_GRACE_MS = 5_000;
 const MATCH_ID = "lms";
 
@@ -44,6 +48,8 @@ function createLastManStandingSession(
   let matchSession: MatchSession | null = null;
   let participantsAtStart: MiniGamePlayer[] = lobbyPlayers;
   let deadlineAt = 0;
+  /** Server-time when the match's simulation starts (end of warm-up). */
+  let goAt: number | null = null;
   let matchEnded = false;
   let ended = false;
   const disconnectedIds = new Set<string>();
@@ -56,6 +62,7 @@ function createLastManStandingSession(
       type: "lms-state",
       phase,
       phaseEndsAt,
+      goAt: phase === "playing" ? goAt : null,
       matchId: MATCH_ID,
       players: participantsAtStart.map((p) => ({
         playerId: p.playerId,
@@ -82,7 +89,10 @@ function createLastManStandingSession(
 
     phase = "playing";
     phaseEndsAt = null;
-    deadlineAt = Date.now() + ctx.miniGame.matchTimeoutMs;
+    const startAt = Date.now() + WARMUP_MS;
+    goAt = startAt;
+    // Warm-up doesn't eat into play time.
+    deadlineAt = startAt + ctx.miniGame.matchTimeoutMs;
     const participantIds = participantsAtStart.map((p) => p.playerId);
 
     // Active participants → clicker off (focused).
@@ -96,6 +106,7 @@ function createLastManStandingSession(
       matchId: MATCH_ID,
       players: participantsAtStart,
       deadlineAt,
+      startAt,
       broadcast: (msg) => {
         if (msg.type === "welcome") lastWelcome = msg;
         ctx.broadcastMatch(MATCH_ID, participantIds, msg);
