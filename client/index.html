@@ -576,6 +576,20 @@
         font-variant-numeric: tabular-nums;
       }
 
+      /* Version-skew notice (server started a game this bundle doesn't know) */
+      .skew-notice {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 16px;
+        padding: 24px;
+        text-align: center;
+      }
+      .skew-title { font-size: 22px; letter-spacing: 4px; text-transform: uppercase; color: var(--accent); }
+      .skew-notice p { color: var(--muted); max-width: 320px; margin: 0; }
+
       /* Round results */
       .results {
         flex: 1;

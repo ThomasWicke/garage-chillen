@@ -47,9 +47,12 @@ function createLastManStandingSession(
   let matchEnded = false;
   let ended = false;
   const disconnectedIds = new Set<string>();
+  /** Last welcome the match emitted — replayed to players who reconnect
+   *  mid-match so their client can rebuild the scene. */
+  let lastWelcome: { type: string; [k: string]: unknown } | null = null;
 
-  function broadcastState() {
-    ctx.broadcastGamemode({
+  function buildStateMsg() {
+    return {
       type: "lms-state",
       phase,
       phaseEndsAt,
@@ -59,7 +62,11 @@ function createLastManStandingSession(
         nickname: p.nickname,
         avatarId: p.avatarId,
       })),
-    });
+    };
+  }
+
+  function broadcastState() {
+    ctx.broadcastGamemode(buildStateMsg());
   }
 
   function startMatch() {
@@ -89,8 +96,16 @@ function createLastManStandingSession(
       matchId: MATCH_ID,
       players: participantsAtStart,
       deadlineAt,
-      broadcast: (msg) => ctx.broadcastMatch(MATCH_ID, participantIds, msg),
-      sendTo: (pid, msg) => ctx.sendMatch(MATCH_ID, pid, msg),
+      broadcast: (msg) => {
+        if (msg.type === "welcome") lastWelcome = msg;
+        ctx.broadcastMatch(MATCH_ID, participantIds, msg);
+      },
+      sendTo: (pid, msg) => {
+        // Per-player welcomes (e.g. Flappy Bird) carry the same payload for
+        // everyone, so keeping the last one is enough for replay.
+        if (msg.type === "welcome") lastWelcome = msg;
+        ctx.sendMatch(MATCH_ID, pid, msg);
+      },
       endMatch: (result) => completeMatch(result),
       log: (...args) => ctx.log("[lms-match]", ...args),
     };
@@ -191,6 +206,17 @@ function createLastManStandingSession(
         } catch (e) {
           ctx.log("[lms] match.onPlayerLeft err", e);
         }
+      }
+    },
+    onPlayerRejoined(playerId) {
+      if (ended) return;
+      // Back during the intro → they play after all.
+      if (phase === "intro") disconnectedIds.delete(playerId);
+      // Re-send current gamemode state, then the match welcome so the
+      // client can rebuild the match scene it never saw (or tore down).
+      ctx.sendGamemode(playerId, buildStateMsg());
+      if (phase === "playing" && !matchEnded && lastWelcome) {
+        ctx.sendMatch(MATCH_ID, playerId, lastWelcome);
       }
     },
     cleanup() {

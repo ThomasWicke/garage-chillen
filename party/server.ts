@@ -36,6 +36,11 @@ import type {
 } from "./protocol";
 
 const GM_GRACE_MS = 30_000;
+/** How long a mid-round disconnect may last before the gamemode is told the
+ *  player left (= forfeit in tournaments, elimination in LMS games). Phones
+ *  drop the socket on screen-lock/app-switch and PartySocket reconnects
+ *  within a few seconds — don't punish that. */
+const PLAYER_LEAVE_GRACE_MS = 10_000;
 const PREPARE_COUNTDOWN_MS = 3_000;
 const ROUND_RESULTS_AUTO_DISMISS_MS = 8_000;
 const ROUND_RESULTS_AUTO_DISMISS_SHUFFLE_MS = 4_000;
@@ -191,9 +196,36 @@ export default class LobbyServer implements Party.Server {
       this.startGmGrace();
     }
     if (this.active?.session) {
-      this.active.session.onPlayerLeft?.(player.playerId);
+      this.scheduleLeaveNotice(player.playerId);
     }
     this.broadcastPlayerList();
+  }
+
+  /** Notify the active gamemode that a player left — but only if they
+   *  haven't reconnected within the grace window. */
+  private leaveTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+  private scheduleLeaveNotice(playerId: string) {
+    if (this.leaveTimers.has(playerId)) return;
+    this.leaveTimers.set(
+      playerId,
+      setTimeout(() => {
+        this.leaveTimers.delete(playerId);
+        const rec = this.registry.getByPlayerId(playerId);
+        if (rec?.connectionId) return; // reconnected in time
+        if (this.active && !this.active.ended) {
+          this.active.session.onPlayerLeft?.(playerId);
+        }
+      }, PLAYER_LEAVE_GRACE_MS),
+    );
+  }
+
+  private cancelLeaveNotice(playerId: string) {
+    const t = this.leaveTimers.get(playerId);
+    if (t) {
+      clearTimeout(t);
+      this.leaveTimers.delete(playerId);
+    }
   }
 
   // ─── identify ────────────────────────────────────────────────────────────
@@ -212,6 +244,7 @@ export default class LobbyServer implements Party.Server {
     } else if (record.playerId === this.gmPlayerId) {
       this.cancelGmGrace();
     }
+    this.cancelLeaveNotice(record.playerId);
 
     this.send<WelcomeMsg>(sender, {
       scope: "presence",
@@ -239,6 +272,14 @@ export default class LobbyServer implements Party.Server {
     });
     this.sendCurrentLobbyState(sender);
     this.broadcastPlayerList();
+
+    // Mid-round (re)connect: the client just mounted (or will mount) the
+    // gamemode scene from the lobby state above, but match welcomes and the
+    // current gamemode state were broadcast before it connected. Ask the
+    // gamemode to re-send them so the scene can rebuild.
+    if (this.state === "playing" && this.active && !this.active.ended) {
+      this.active.session.onPlayerRejoined?.(record.playerId);
+    }
   }
 
   // ─── GM grace period ─────────────────────────────────────────────────────

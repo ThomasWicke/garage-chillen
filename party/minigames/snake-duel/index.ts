@@ -72,9 +72,13 @@ function createSnakeDuelMatch(ctx: MatchContext): MatchSession {
   const [p1, p2] = ctx.players;
   if (!p1 || !p2) throw new Error("Snake Duel requires exactly 2 participants");
 
+  // Spawn on mirrored columns (not the same one) so the no-turn paths are
+  // parallel — same-column spawns head-on collide ~10 steps in, ending the
+  // match before anyone can react.
+  const spawnCol = Math.floor(SNAKE_GRID_COLS / 3);
   const state: GameState = {
-    p1: freshSnake(Math.floor(SNAKE_GRID_COLS / 2), 5, "down"),
-    p2: freshSnake(Math.floor(SNAKE_GRID_COLS / 2), SNAKE_GRID_ROWS - 6, "up"),
+    p1: freshSnake(spawnCol, 5, "down"),
+    p2: freshSnake(SNAKE_GRID_COLS - 1 - spawnCol, SNAKE_GRID_ROWS - 6, "up"),
     food: [],
     step: 0,
     lastStepAt: Date.now(),
@@ -192,7 +196,7 @@ function createSnakeDuelMatch(ctx: MatchContext): MatchSession {
     let summary: string;
     if (aDied && bDied) {
       winnerId = null;
-      summary = "head-on collision · draw";
+      summary = "both crashed · draw";
     } else if (aDied) {
       winnerId = p2.playerId;
       summary = `${p2.nickname} survives`;

@@ -69,9 +69,13 @@ function createLightCyclesMatch(ctx: MatchContext): MatchSession {
   const [p1, p2] = ctx.players;
   if (!p1 || !p2) throw new Error("Light Cycles requires exactly 2 participants");
 
+  // Spawn on mirrored columns (not the same one) so the no-turn paths are
+  // parallel — same-column spawns head-on collide ~12 steps in, ending the
+  // match before anyone can react.
+  const spawnCol = Math.floor(LC_GRID_COLS / 3);
   const state: GameState = {
-    p1: freshBike(Math.floor(LC_GRID_COLS / 2), 4, "down"),
-    p2: freshBike(Math.floor(LC_GRID_COLS / 2), LC_GRID_ROWS - 5, "up"),
+    p1: freshBike(spawnCol, 4, "down"),
+    p2: freshBike(LC_GRID_COLS - 1 - spawnCol, LC_GRID_ROWS - 5, "up"),
     occupied: new Set(),
     step: 0,
     lastStepAt: Date.now(),
@@ -166,7 +170,7 @@ function createLightCyclesMatch(ctx: MatchContext): MatchSession {
     let summary: string;
     if (aDied && bDied) {
       winnerId = null;
-      summary = "head-on collision · draw";
+      summary = "both crashed · draw";
     } else if (aDied) {
       winnerId = p2.playerId;
       summary = `${p2.nickname} survives`;

@@ -166,10 +166,41 @@ export function renderLobby(rawCode: string): () => void {
     state.matchScore = null;
   }
 
+  /** Marks which `${gamemodeId}:${minigameId}` the skew notice is showing
+   *  for, so the 30Hz rerender doesn't rewrite the DOM every message. */
+  let skewShownForKey: string | null = null;
+
+  /** The server started a game this bundle has no client module for.
+   *  Reload once to pick up the new build; if it is still unknown after
+   *  the reload, show a notice (reconnect is seamless — identity is in
+   *  localStorage and the lobby code is in the URL). */
+  function renderVersionSkew(key: string) {
+    const reloadFlag = `gc.skew-reload.${key}`;
+    if (!sessionStorage.getItem(reloadFlag)) {
+      sessionStorage.setItem(reloadFlag, "1");
+      window.location.reload();
+      return;
+    }
+    if (skewShownForKey === key) return;
+    skewShownForKey = key;
+    sceneEl.innerHTML = `
+      <div class="skew-notice">
+        <div class="skew-title">App update needed</div>
+        <p>This round uses a game your app version doesn't have yet. Close and reopen the app (or tap below) to update.</p>
+        <button class="primary" id="skew-reload">Reload</button>
+      </div>
+    `;
+    sceneEl
+      .querySelector<HTMLButtonElement>("#skew-reload")!
+      .addEventListener("click", () => window.location.reload());
+  }
+
   function rerender() {
     const isGm = !!state.selfPlayerId && state.gmPlayerId === state.selfPlayerId;
 
     renderSessionToolbar(state, toolbarEl);
+
+    if (state.lobbyState !== "playing") skewShownForKey = null;
 
     if (state.lobbyState === "idle") {
       teardownGamemode();
@@ -291,13 +322,15 @@ export function renderLobby(rawCode: string): () => void {
       if (activeGamemodeKey !== key) {
         teardownGamemode();
         const gmDef = getGamemodeClient(gamemodeId);
-        if (!gmDef) {
-          console.error(`No client for gamemode ${gamemodeId}`);
-          return;
-        }
         const mgDef = getMiniGameClient(minigameId);
-        if (!mgDef) {
-          console.error(`No client for mini-game ${minigameId}`);
+        if (!gmDef || !mgDef) {
+          // This client build doesn't know the game the server just started —
+          // it predates the latest deploy (the page has been open since before,
+          // or a cached bundle). Reload once to pick up the new build; if it's
+          // STILL unknown after the reload, show a notice instead of leaving
+          // the preparing countdown frozen on screen.
+          console.error(`No client for ${key} — version skew`);
+          renderVersionSkew(key);
           return;
         }
         const mgInfo = state.availableMinigames.find((m) => m.id === minigameId);

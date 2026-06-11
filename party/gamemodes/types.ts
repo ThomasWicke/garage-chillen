@@ -75,6 +75,11 @@ export type GamemodeSession = {
     msg: { type: string; [k: string]: unknown },
   ) => void;
   onPlayerLeft?: (playerId: string) => void;
+  /** A player (re-)identified while this gamemode session is running — e.g.
+   *  after a phone lock/unlock reconnect or a page reload mid-round. The
+   *  gamemode should re-send whatever per-player state the client needs to
+   *  rebuild its scene (current gamemode state + active match welcomes). */
+  onPlayerRejoined?: (playerId: string) => void;
   cleanup: () => void;
 };
 

@@ -16,6 +16,9 @@ const ROUNDS = 5;
 const MIN_DELAY_MS = 1500;
 const MAX_DELAY_MS = 4000;
 const RESULT_HOLD_MS = 1800;
+/** If neither player taps after GO, score the round a draw instead of
+ *  hanging until the match deadline. */
+const GO_TIMEOUT_MS = 10_000;
 const RD_MATCH_TIMEOUT_MS = 90_000;
 
 type Phase = "armed" | "go" | "result" | "ended";
@@ -162,8 +165,11 @@ function createReactionDuelMatch(ctx: MatchContext): MatchSession {
       const now = Date.now();
       if (state.phase === "armed" && now >= state.signalAt) {
         state.phase = "go";
-        // No phaseEndsAt for "go" — ends when someone taps.
+        // No phaseEndsAt for "go" — ends when someone taps (or GO_TIMEOUT_MS).
         state.phaseEndsAt = 0;
+      } else if (state.phase === "go" && now - state.signalAt >= GO_TIMEOUT_MS) {
+        // Neither player tapped — draw round, move on.
+        awardRound(null, "draw", null, null);
       } else if (state.phase === "result" && now >= state.phaseEndsAt) {
         advanceAfterResult();
       }

@@ -51,6 +51,9 @@ type ActiveMatch = {
   ended: boolean;
   /** Set when the match ended; bracket already updated. */
   result: MatchEndResult | null;
+  /** Last welcome the match emitted — replayed to players who reconnect
+   *  mid-round so their client (participant or spectator) can rebuild. */
+  welcomeMsg: { type: string; [k: string]: unknown } | null;
 };
 
 function createTournamentSession(ctx: GamemodeContext): GamemodeSession {
@@ -76,8 +79,8 @@ function createTournamentSession(ctx: GamemodeContext): GamemodeSession {
 
   // ─── helpers ─────────────────────────────────────────────────────────────
 
-  function broadcastBracketState() {
-    ctx.broadcastGamemode({
+  function buildBracketStateMsg() {
+    return {
       type: "bracket-state",
       phase,
       currentRound,
@@ -87,7 +90,11 @@ function createTournamentSession(ctx: GamemodeContext): GamemodeSession {
         matchId: m.matchId,
         participants: m.participantIds,
       })),
-    });
+    };
+  }
+
+  function broadcastBracketState() {
+    ctx.broadcastGamemode(buildBracketStateMsg());
   }
 
   function clearPhaseTimer() {
@@ -184,6 +191,7 @@ function createTournamentSession(ctx: GamemodeContext): GamemodeSession {
         deadlineAt: plan.deadlineAt,
         ended: false,
         result: null,
+        welcomeMsg: null,
       };
       activeMatches.set(plan.bracketMatch.matchId, placeholder);
       for (const pid of plan.participantIds) {
@@ -205,10 +213,14 @@ function createTournamentSession(ctx: GamemodeContext): GamemodeSession {
         matchId: plan.bracketMatch.matchId,
         players: plan.participants,
         deadlineAt: plan.deadlineAt,
-        broadcast: (msg) =>
-          ctx.broadcastMatch(plan.bracketMatch.matchId, plan.participantIds, msg),
-        sendTo: (pid, msg) =>
-          ctx.sendMatch(plan.bracketMatch.matchId, pid, msg),
+        broadcast: (msg) => {
+          if (msg.type === "welcome") am.welcomeMsg = msg;
+          ctx.broadcastMatch(plan.bracketMatch.matchId, plan.participantIds, msg);
+        },
+        sendTo: (pid, msg) => {
+          if (msg.type === "welcome") am.welcomeMsg = msg;
+          ctx.sendMatch(plan.bracketMatch.matchId, pid, msg);
+        },
         endMatch: (result) =>
           completeMatch(plan.bracketMatch.matchId, result),
         log: (...args) =>
@@ -363,6 +375,18 @@ function createTournamentSession(ctx: GamemodeContext): GamemodeSession {
     },
     onGamemodeMessage(_playerId, _msg) {
       // No gamemode-level inbound messages yet (could be used for "ready up").
+    },
+    onPlayerRejoined(playerId) {
+      if (ended) return;
+      // Re-send the bracket state, then every active match's welcome —
+      // the rejoining client mounts its own match if it's a participant,
+      // or a spectated one (welcomes are cached client-side per matchId).
+      ctx.sendGamemode(playerId, buildBracketStateMsg());
+      for (const am of activeMatches.values()) {
+        if (!am.ended && am.welcomeMsg) {
+          ctx.sendMatch(am.matchId, playerId, am.welcomeMsg);
+        }
+      }
     },
     onPlayerLeft(playerId) {
       disconnectedIds.add(playerId);
