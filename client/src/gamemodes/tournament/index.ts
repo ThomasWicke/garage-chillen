@@ -236,10 +236,12 @@ function createTournamentClientSession(
       }
     }
     if (bracketState?.goAt && bracketState.goAt > Date.now()) {
+      // Spectators get the countdown but not the controls hint — they
+      // can't play this match.
       warmupCleanup = showWarmupOverlay(
         matchEl,
         bracketState.goAt,
-        ctx.miniGame.controlsHint ?? null,
+        isSpectator ? null : (ctx.miniGame.controlsHint ?? null),
       );
     }
   }
@@ -386,7 +388,13 @@ function createTournamentClientSession(
         const sec = s.phaseEndsAt
           ? Math.max(0, Math.ceil((s.phaseEndsAt - Date.now()) / 1000))
           : 0;
-        return { title: "Tournament", sub: `Starts in ${sec}…` };
+        // Lead with the mini-game name — the preparing screen is only a
+        // brief flash now, so this is where inattentive players learn
+        // which game is about to run.
+        return {
+          title: ctx.miniGameDisplayName,
+          sub: `Tournament · starts in ${sec}…`,
+        };
       }
       case "round":
         return {

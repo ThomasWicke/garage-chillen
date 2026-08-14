@@ -14,9 +14,9 @@ import type {
   PosComp,
   RectComp,
   SpriteComp,
-  TextComp,
 } from "kaplay";
 import { avatarSrc } from "../../identity";
+import { formatRemaining, statusLine } from "../clock";
 import { registerMiniGameClient } from "../registry";
 import type {
   MatchClientContext,
@@ -42,7 +42,7 @@ type StateMsg = {
 
 type BirdSprite = GameObj<PosComp | SpriteComp | AnchorComp | OpacityComp>;
 type PipeSprite = GameObj<PosComp | RectComp | ColorComp | AnchorComp>;
-type MarkerSprite = GameObj<PosComp | TextComp | ColorComp | AnchorComp>;
+type MarkerSprite = GameObj<PosComp | ColorComp>;
 
 const GHOST_OPACITY = 0.4;
 
@@ -134,12 +134,14 @@ function createFlappyBirdMatchClient(
     });
 
     if (!ctx.isSpectator) {
+      // Down-pointing triangle marker — kaplay text() rendered as a glyph-
+      // less black bar here, so the marker is drawn geometry instead.
       youMarker = kk.add([
-        kk.text("▼ YOU", { size: 18 }),
+        kk.polygon([kk.vec2(-10, -12), kk.vec2(10, -12), kk.vec2(0, 0)]),
         kk.pos(-99, -99),
-        kk.color(40, 40, 60),
-        kk.anchor("bot"),
-      ]);
+        kk.color(30, 30, 50),
+        kk.outline(2, kk.rgb(255, 255, 255)),
+      ]) as unknown as MarkerSprite;
     }
 
     // Tap / click to flap.
@@ -218,11 +220,10 @@ function createFlappyBirdMatchClient(
     ctx.setMatchScore(`${alive}/${total} alive`);
 
     const myBird = msg.birds[ctx.selfPlayerId];
+    const clock = formatRemaining(msg.deadlineAt);
     statusEl.textContent = !myBird
-      ? "spectating"
-      : myBird.alive
-        ? ""
-        : "you died · keep watching";
+      ? statusLine("spectating", clock)
+      : statusLine(myBird.alive ? null : "you died · keep watching", clock);
 
     // Float the "YOU" tag above the own bird while it's active.
     if (youMarker) {

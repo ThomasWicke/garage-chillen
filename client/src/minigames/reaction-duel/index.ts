@@ -99,7 +99,7 @@ function createReactionDuelMatchClient(
         line = `${loserNick} jumped early`;
       } else {
         const winnerNick = r.winner === "p1" ? p1Nick : p2Nick;
-        const ms = r.p1ReactionMs ?? r.p2ReactionMs ?? 0;
+        const ms = Math.round(r.p1ReactionMs ?? r.p2ReactionMs ?? 0);
         line = `${winnerNick} · ${ms}ms`;
       }
       headlineEl.textContent = line;

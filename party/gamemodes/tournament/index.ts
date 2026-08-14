@@ -36,7 +36,7 @@ import type {
   MiniGamePlayer,
 } from "../types";
 
-const INTRO_MS = 8_000;
+const INTRO_MS = 5_000;
 const BETWEEN_MS = 5_000;
 /** Scene visible but simulation frozen for this long before GO. */
 const WARMUP_MS = 3_000;

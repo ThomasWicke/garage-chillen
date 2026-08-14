@@ -16,11 +16,14 @@ export function renderRoundResultsView(
     isGm: boolean;
     /** Server time (ms) when the round-results screen auto-dismisses. */
     dismissAt: number;
+    /** Cumulative session points — shown as running totals per row. */
+    sessionScores: Record<string, number>;
   },
   container: HTMLElement,
   handlers: RoundResultsHandlers,
 ): void {
-  const { result, players, selfPlayerId, isGm, dismissAt } = args;
+  const { result, players, selfPlayerId, isGm, dismissAt, sessionScores } =
+    args;
   const remainingSec =
     dismissAt > 0 ? Math.max(0, Math.ceil((dismissAt - Date.now()) / 1000)) : 0;
   // Sort participants by points desc.
@@ -28,6 +31,7 @@ export function renderRoundResultsView(
     .map((id) => ({
       player: players.find((p) => p.playerId === id) ?? null,
       points: result.scores[id] ?? 0,
+      total: sessionScores[id] ?? 0,
     }))
     .sort((a, b) => b.points - a.points);
 
@@ -43,7 +47,8 @@ export function renderRoundResultsView(
             <span class="rank">${i + 1}</span>
             <span class="avatar"><img src="${avatarSrc(r.player?.avatarId ?? "bean")}" alt="" /></span>
             <span class="name">${escapeHtml(r.player?.nickname ?? "?")}</span>
-            <span class="points">${r.points}</span>
+            <span class="points">+${r.points}</span>
+            <span class="total-points">Σ ${r.total}</span>
           </div>
         `,
           )
@@ -53,7 +58,7 @@ export function renderRoundResultsView(
         ${
           isGm
             ? `<button class="primary" id="back-btn">back to lobby</button>`
-            : `<div class="hint">returning to lobby in ${remainingSec}…</div>`
+            : `<div class="hint">returning to lobby in <span data-count-to="${dismissAt}">${remainingSec}</span>…</div>`
         }
       </div>
     </div>

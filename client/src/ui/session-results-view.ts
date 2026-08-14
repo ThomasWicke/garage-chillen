@@ -15,11 +15,15 @@ export function renderSessionResultsView(
     scores: Record<string, number>;
     selfPlayerId: string | null;
     isGm: boolean;
+    /** Server time when the finale auto-dismisses (0 = unknown). */
+    dismissAt: number;
   },
   container: HTMLElement,
   handlers: SessionResultsHandlers,
 ): void {
-  const { players, scores, selfPlayerId, isGm } = args;
+  const { players, scores, selfPlayerId, isGm, dismissAt } = args;
+  const remainingSec =
+    dismissAt > 0 ? Math.max(0, Math.ceil((dismissAt - Date.now()) / 1000)) : 0;
 
   // Rank every known player by session score (players with 0 included —
   // they sat through the run too).
@@ -80,7 +84,9 @@ export function renderSessionResultsView(
         ${
           isGm
             ? `<button class="primary" id="finale-back-btn">back to lobby</button>`
-            : `<div class="hint">what a run!</div>`
+            : dismissAt > 0
+              ? `<div class="hint">what a run! · back to lobby in <span data-count-to="${dismissAt}">${remainingSec}</span>…</div>`
+              : `<div class="hint">what a run!</div>`
         }
       </div>
     </div>

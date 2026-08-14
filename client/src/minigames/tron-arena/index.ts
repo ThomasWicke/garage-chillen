@@ -9,8 +9,8 @@ import type {
   GameObj,
   PosComp,
   RectComp,
-  TextComp,
 } from "kaplay";
+import { formatRemaining, statusLine } from "../clock";
 import { registerMiniGameClient } from "../registry";
 import type {
   MatchClientContext,
@@ -19,7 +19,7 @@ import type {
 } from "../types";
 
 type Sprite = GameObj<PosComp | RectComp | ColorComp | AnchorComp>;
-type MarkerSprite = GameObj<PosComp | TextComp | ColorComp | AnchorComp>;
+type MarkerSprite = GameObj<PosComp | ColorComp>;
 type Dir = "up" | "down" | "left" | "right";
 type Cell = { x: number; y: number };
 
@@ -38,6 +38,7 @@ type StateMsg = {
     string,
     { head: Cell; dir: Dir; alive: boolean; trail: Cell[] }
   >;
+  deadlineAt: number;
 };
 
 // Build a stable color per playerId by hashing.
@@ -147,12 +148,14 @@ function createTronArenaMatchClient(
     }
 
     if (!ctx.isSpectator) {
+      // Drawn triangle instead of kaplay text() — text rendered as a glyph-
+      // less black bar on some devices.
       youMarker = k.add([
-        k.text("▼ YOU", { size: 18 }),
+        k.polygon([k.vec2(-10, -12), k.vec2(10, -12), k.vec2(0, 0)]),
         k.pos(-99, -99),
         k.color(255, 255, 255),
-        k.anchor("bot"),
-      ]);
+        k.outline(2, k.rgb(20, 20, 30)),
+      ]) as unknown as MarkerSprite;
     }
 
     if (!ctx.isSpectator) {
@@ -227,10 +230,14 @@ function createTronArenaMatchClient(
     }
 
     const me = msg.bikes[ctx.selfPlayerId];
+    const clock = formatRemaining(msg.deadlineAt);
     if (me) {
-      statusEl.textContent = me.alive ? "" : "you crashed · keep watching";
+      statusEl.textContent = statusLine(
+        me.alive ? null : "you crashed · keep watching",
+        clock,
+      );
     } else {
-      statusEl.textContent = "spectating";
+      statusEl.textContent = statusLine("spectating", clock);
     }
 
     // Float the "YOU" tag above the own bike while it's active.

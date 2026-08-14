@@ -13,6 +13,10 @@ import type {
 
 const MIN_TIMER_MS = 4_000;
 const MAX_TIMER_MS = 9_000;
+/** The potato can't be passed for this long after receiving it. Kills the
+ *  spam-tap-where-the-button-will-appear exploit: everyone holds real risk
+ *  for at least this window. */
+const PASS_ARM_MS = 600;
 /** Brief pause after each elimination before the next holder is picked. */
 const ELIM_PAUSE_MS = 1_500;
 const HP_MATCH_TIMEOUT_MS = 120_000;
@@ -25,6 +29,8 @@ type GameState = {
   holderId: string | null;
   /** Server-only countdown — the heat. Players never see this. */
   timerExpiresAt: number;
+  /** When the current holder received the potato (for the pass-arm delay). */
+  holderSince: number;
   /** Pause until this time after an elimination. */
   pauseUntil: number;
   /** Most recent elimination, broadcast to clients during the pause. */
@@ -47,6 +53,7 @@ function createHotPotatoMatch(ctx: MatchContext): MatchSession {
     pauseUntil: 0,
     lastEliminated: null,
     startedAt: ctx.startAt,
+    holderSince: ctx.startAt,
   };
   // First holder is random. The hidden timer counts from GO, not creation.
   state.holderId = pickRandom([...state.alivePlayers]);
@@ -74,6 +81,8 @@ function createHotPotatoMatch(ctx: MatchContext): MatchSession {
       alive: [...state.alivePlayers],
       lastEliminated: state.lastEliminated,
       pauseUntil: state.pauseUntil,
+      /** Server time when the holder is allowed to pass. */
+      armAt: state.holderSince + PASS_ARM_MS,
       // Note: timerExpiresAt is intentionally NOT broadcast.
       deadlineAt: ctx.deadlineAt,
     });
@@ -103,6 +112,7 @@ function createHotPotatoMatch(ctx: MatchContext): MatchSession {
     // the hidden timer must not burn through the frozen 3s — the replacement
     // could otherwise be eliminated ~1s after GO.
     state.timerExpiresAt = Math.max(Date.now(), ctx.startAt) + randomTimerMs();
+    state.holderSince = Math.max(Date.now(), ctx.startAt);
     state.phase = "live";
   }
 
@@ -192,12 +202,15 @@ function createHotPotatoMatch(ctx: MatchContext): MatchSession {
       if (Date.now() < ctx.startAt) return; // warm-up: ignore inputs
       if (msg.type !== "pass-potato") return;
       if (state.holderId !== playerId) return;
+      // Pass-arm delay: taps before the potato "arms" are dropped.
+      if (Date.now() - state.holderSince < PASS_ARM_MS) return;
       // Pass to random other alive player.
       const others = [...state.alivePlayers].filter((id) => id !== playerId);
       if (others.length === 0) return;
       const next = pickRandom(others);
       if (!next) return;
       state.holderId = next;
+      state.holderSince = Date.now();
       // Timer keeps running; passing doesn't reset it (that's the suspense).
     },
     onPlayerLeft(playerId) {

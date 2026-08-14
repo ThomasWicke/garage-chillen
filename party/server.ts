@@ -41,7 +41,9 @@ const GM_GRACE_MS = 30_000;
  *  drop the socket on screen-lock/app-switch and PartySocket reconnects
  *  within a few seconds — don't punish that. */
 const PLAYER_LEAVE_GRACE_MS = 10_000;
-const PREPARE_COUNTDOWN_MS = 3_000;
+/** Short — the gamemode intro right after this carries the "which game is
+ *  this" information; the preparing screen is just a transition flash. */
+const PREPARE_COUNTDOWN_MS = 1_000;
 const ROUND_RESULTS_AUTO_DISMISS_MS = 8_000;
 const ROUND_RESULTS_AUTO_DISMISS_SHUFFLE_MS = 4_000;
 const SEQUENCE_AUTOSTART_MS = 7_000;
@@ -266,6 +268,7 @@ export default class LobbyServer implements Party.Server {
         minPlayers: m.minPlayers,
         maxPlayers: m.maxPlayers,
         shuffleWeight: m.shuffleWeight ?? 1,
+        archived: m.archived ?? false,
       })),
     });
     this.send<SessionStateMsg>(sender, {
@@ -544,7 +547,7 @@ export default class LobbyServer implements Party.Server {
     if (this.sequence) return; // already running
     const lobbyN = this.lobbyPlayersForMinigame().length;
     const eligible = allMiniGames().filter(
-      (m) => m.minPlayers <= lobbyN && lobbyN <= m.maxPlayers,
+      (m) => !m.archived && m.minPlayers <= lobbyN && lobbyN <= m.maxPlayers,
     );
     if (eligible.length === 0) return;
 
@@ -654,6 +657,8 @@ export default class LobbyServer implements Party.Server {
    *  before returning to the idle lobby. */
   private sessionResultsTimer: ReturnType<typeof setTimeout> | null = null;
 
+  private sessionResultsDismissAt = 0;
+
   private showSessionResults() {
     this.endSequence();
     if (this.state !== "idle") {
@@ -662,6 +667,7 @@ export default class LobbyServer implements Party.Server {
       return;
     }
     this.state = "session-results";
+    this.sessionResultsDismissAt = Date.now() + SESSION_RESULTS_AUTO_DISMISS_MS;
     this.broadcastLobbyState();
     if (this.sessionResultsTimer) clearTimeout(this.sessionResultsTimer);
     this.sessionResultsTimer = setTimeout(
@@ -763,6 +769,7 @@ export default class LobbyServer implements Party.Server {
         scope: "lobby",
         type: "state",
         state: "session-results",
+        dismissAt: this.sessionResultsDismissAt,
         ...(sequence ? { sequence } : {}),
       };
     }

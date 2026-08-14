@@ -15,7 +15,8 @@ export const SUMO_FIELD_H = 800;
 export const SUMO_ARENA_RADIUS = 220;
 export const SUMO_AVATAR_RADIUS = 32;
 
-const LUNGE_FORCE = 700; // initial speed on lunge (px/s)
+const LUNGE_FORCE = 350; // initial speed on lunge (px/s) — halved; 700 was
+// far too twitchy for the small ring (one full-strength lunge crossed it).
 const LUNGE_COOLDOWN_MS = 700;
 const PER_SECOND_DAMPING = 0.35; // multiplier per second
 const RESPAWN_INVULN_MS = 1500;

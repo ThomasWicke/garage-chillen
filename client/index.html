@@ -312,6 +312,26 @@
         image-rendering: pixelated;
       }
       .lobby .player .offline-tag { color: var(--muted); }
+      .lobby .player .host-tag {
+        font-size: 10px;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        color: var(--accent);
+      }
+      .lobby .player .pts-tag {
+        font-size: 12px;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+        color: var(--accent);
+        margin-right: 6px;
+      }
+      .lobby-hint {
+        text-align: center;
+        color: var(--muted);
+        font-size: 14px;
+        padding: 14px 10px;
+      }
+      .lobby-hint strong { color: var(--fg); }
       .lobby .player.self {
         border: 1px solid var(--accent);
       }
@@ -505,11 +525,41 @@
         padding: 4px 10px;
         cursor: pointer;
       }
+      .drawer-tabs {
+        display: flex;
+        gap: 8px;
+        padding: 0 4px 12px;
+      }
+      .drawer-tab {
+        flex: 1;
+        padding: 8px 0;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 999px;
+        color: var(--muted);
+        cursor: pointer;
+      }
+      .drawer-tab.active {
+        background: rgba(171, 221, 100, 0.15);
+        border-color: var(--accent);
+        color: var(--accent);
+      }
       .drawer-body {
         display: grid;
         grid-template-columns: 1fr 1fr;
         gap: 10px;
         overflow-y: auto;
+      }
+      .picker-archive-note {
+        grid-column: 1 / -1;
+        font-size: 11px;
+        color: var(--muted);
+        font-style: italic;
+        padding: 2px 4px;
       }
       .picker-card {
         display: flex;
@@ -557,6 +607,28 @@
         color: var(--muted);
         font-style: italic;
       }
+
+      /* Score-event flash (goal / ring-out) — visual only. */
+      .pong, .hockey, .sumo { position: relative; }
+      .match-flash {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 40px;
+        font-weight: 800;
+        letter-spacing: 3px;
+        text-transform: uppercase;
+        color: #fff;
+        text-shadow: 0 2px 18px rgba(0, 0, 0, 0.7);
+        background: rgba(255, 255, 255, 0.14);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 140ms;
+        z-index: 4;
+      }
+      .match-flash.show { opacity: 1; }
 
       /* Preparing countdown */
       .preparing {
@@ -651,6 +723,12 @@
       .results-row .avatar img { width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; }
       .results-row .name { flex: 1; }
       .results-row .points { font-weight: 700; font-variant-numeric: tabular-nums; }
+      .results-row .total-points {
+        color: var(--muted);
+        font-size: 12px;
+        font-variant-numeric: tabular-nums;
+        margin-left: 8px;
+      }
       .results-row.self { border: 1px solid var(--accent); }
       .results-actions { margin-top: auto; display: flex; flex-direction: column; gap: 8px; }
       .results-actions .hint { color: var(--muted); font-size: 12px; text-align: center; letter-spacing: 1px; }
@@ -761,7 +839,8 @@
       /* Spectator mode: dark pastel yellow stroke around the scene + a
          "SPECTATING" tag in the top-right corner. The match scene itself
          doesn't need to know — the gamemode wrapper applies the chrome. */
-      .tournament-match.spectating::before {
+      .tournament-match.spectating::before,
+      .lms-match.spectating::before {
         content: "";
         position: absolute;
         inset: 0;
@@ -770,7 +849,8 @@
         border-radius: 4px;
         z-index: 5;
       }
-      .tournament-match.spectating[data-spectator-label]::after {
+      .tournament-match.spectating[data-spectator-label]::after,
+      .lms-match.spectating[data-spectator-label]::after {
         content: attr(data-spectator-label);
         position: absolute;
         top: 8px;
@@ -1291,14 +1371,20 @@
         border-radius: 16px;
         padding: 0;
         cursor: pointer;
-        opacity: 0.55;
-        transition: opacity 120ms, transform 80ms;
+        /* Dim base + hard, fast flash — the old 0.55→1 + thin ring was too
+           subtle to count flashes reliably. */
+        opacity: 0.3;
+        transition: opacity 50ms, transform 50ms, box-shadow 50ms;
         touch-action: manipulation;
       }
+      /* Input phase: cells brighten so "your turn" reads instantly. */
+      .ms-cell.ready { opacity: 0.85; }
       .ms-cell.flash {
         opacity: 1;
-        transform: scale(1.04);
-        box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.4);
+        transform: scale(1.07);
+        box-shadow:
+          0 0 0 6px rgba(255, 255, 255, 0.95),
+          0 0 32px 10px rgba(255, 255, 255, 0.5);
       }
       .ms-cell:active { opacity: 0.85; }
       .ms-cell.disabled { opacity: 0.4; cursor: default; pointer-events: none; }

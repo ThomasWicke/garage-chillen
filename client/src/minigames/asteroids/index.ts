@@ -25,6 +25,7 @@ import type {
   SpriteComp,
 } from "kaplay";
 import { avatarSrc } from "../../identity";
+import { formatRemaining, statusLine } from "../clock";
 import { registerMiniGameClient } from "../registry";
 import type {
   MatchClientContext,
@@ -39,6 +40,7 @@ type WelcomeMsg = {
   field: { w: number; h: number };
   ship: { radius: number };
   bullet: { size: number };
+  absorber: { x: number; y: number; radius: number };
   firstTo: number;
   deadlineAt: number;
   players: {
@@ -191,6 +193,16 @@ function createAsteroidsMatchClient(
       ]);
     }
 
+    // Central rock — absorbs bullets (server-side), blocking the straight
+    // spawn-to-spawn firing lane. Center is flip-invariant.
+    kk.add([
+      kk.circle(welcome.absorber.radius),
+      kk.pos(welcome.absorber.x, welcome.absorber.y),
+      kk.color(90, 85, 100),
+      kk.outline(2, kk.rgb(140, 135, 155)),
+      kk.anchor("center"),
+    ]);
+
     kk.loadSprite(`ast-p1`, avatarSrc(p1Info.avatarId));
     kk.loadSprite(`ast-p2`, avatarSrc(p2Info.avatarId));
 
@@ -290,15 +302,18 @@ function createAsteroidsMatchClient(
     }
   }
 
+  let roleHint = "";
+
   function applyWelcome(msg: WelcomeMsg) {
     // Derive role from welcome's players info (broadcast to all viewers).
     if (msg.players.p1.playerId === ctx.selfPlayerId) role = "p1";
     else if (msg.players.p2.playerId === ctx.selfPlayerId) role = "p2";
     else role = "spectator";
-    statusEl.textContent =
+    roleHint =
       role === "spectator"
         ? `${msg.players.p1.nickname} vs ${msg.players.p2.nickname}`
-        : `playing as ${role.toUpperCase()} · first to ${msg.firstTo}`;
+        : `first to ${msg.firstTo}`;
+    statusEl.textContent = roleHint;
     buildScene(msg);
   }
 
@@ -337,7 +352,11 @@ function createAsteroidsMatchClient(
     const theirScore = role === "p2" ? msg.scores.p1 : msg.scores.p2;
     ctx.setMatchScore(`${myScore} – ${theirScore}`);
 
-    statusEl.textContent = msg.running ? "" : "round over";
+    // Keep the persistent hint + a live match clock (previously the hint
+    // was wiped by the first state broadcast, one frame after welcome).
+    statusEl.textContent = msg.running
+      ? statusLine(roleHint, formatRemaining(msg.deadlineAt))
+      : "round over";
   }
 
   function placeShip(

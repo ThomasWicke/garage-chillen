@@ -14,6 +14,8 @@ import type {
   OpacityComp,
 } from "kaplay";
 import { avatarSrc } from "../../identity";
+import { formatRemaining, statusLine } from "../clock";
+import { createMatchFlash } from "../flash";
 import { registerMiniGameClient } from "../registry";
 import type {
   MatchClientContext,
@@ -45,6 +47,7 @@ type StateMsg = {
     p2: { x: number; y: number; vx: number; vy: number; invulnUntil: number };
   };
   scores: { p1: number; p2: number };
+  deadlineAt: number;
 };
 
 function createSumoPushMatchClient(
@@ -58,6 +61,10 @@ function createSumoPushMatchClient(
   `;
   const stageEl = ctx.container.querySelector<HTMLElement>("#sumo-stage")!;
   const statusEl = ctx.container.querySelector<HTMLElement>("#sumo-status")!;
+  const flash = createMatchFlash(
+    ctx.container.querySelector<HTMLElement>(".sumo")!,
+  );
+  let lastScores: { p1: number; p2: number } | null = null;
 
   let role: Role = "spectator";
   let fieldW = 500;
@@ -196,7 +203,26 @@ function createSumoPushMatchClient(
     const theirScore = role === "p2" ? msg.scores.p1 : msg.scores.p2;
     ctx.setMatchScore(`${myScore} – ${theirScore}`);
 
-    if (role !== "spectator") statusEl.textContent = "drag from yourself to lunge";
+    // Visual ring-out cue — the silent respawn read as a glitch.
+    if (
+      lastScores &&
+      (msg.scores.p1 !== lastScores.p1 || msg.scores.p2 !== lastScores.p2)
+    ) {
+      if (role === "spectator") flash.flash("ring out!");
+      else {
+        const iScored =
+          role === "p2"
+            ? msg.scores.p2 > lastScores.p2
+            : msg.scores.p1 > lastScores.p1;
+        flash.flash(iScored ? "ring out!" : "you're out!");
+      }
+    }
+    lastScores = { ...msg.scores };
+
+    statusEl.textContent = statusLine(
+      role === "spectator" ? null : "drag from yourself to lunge",
+      formatRemaining(msg.deadlineAt),
+    );
   }
 
   function applyWelcome(msg: WelcomeMsg) {
@@ -216,6 +242,7 @@ function createSumoPushMatchClient(
       else if (msg.type === "state") applyState(msg as unknown as StateMsg);
     },
     unmount() {
+      flash.destroy();
       try {
         k?.quit();
       } catch {

@@ -25,6 +25,8 @@ type StateMsg = {
   alive: string[];
   lastEliminated: { playerId: string; nickname: string } | null;
   pauseUntil: number;
+  /** Server time when the current holder may pass (pass-arm delay). */
+  armAt: number;
 };
 
 function createHotPotatoMatchClient(
@@ -57,36 +59,49 @@ function createHotPotatoMatchClient(
   passBtn.addEventListener("touchstart", tap, { passive: false });
   passBtn.addEventListener("mousedown", tap);
 
-  function renderGrid(state: StateMsg) {
-    const aliveSet = new Set(state.alive);
+  // Grid is built ONCE from the welcome roster; per-state updates only
+  // toggle classes. Rebuilding innerHTML (with <img>s) at 30Hz flickered
+  // avatars and killed the holder-highlight CSS transition.
+  const cellByPlayerId = new Map<string, HTMLElement>();
+
+  function buildGrid() {
     gridEl.innerHTML = players
-      .map((p) => {
-        const isAlive = aliveSet.has(p.playerId);
-        const isHolder = state.holderId === p.playerId;
-        const cls = [
-          "hp-cell",
-          isAlive ? "" : "dead",
-          isHolder ? "holder" : "",
-          p.playerId === ctx.selfPlayerId ? "self" : "",
-        ]
-          .filter(Boolean)
-          .join(" ");
-        return `<div class="${cls}">
+      .map(
+        (p) => `<div class="hp-cell" data-pid="${escapeHtml(p.playerId)}">
           <div class="hp-avatar"><img src="${avatarSrc(p.avatarId)}" alt="" /></div>
           <div class="hp-nick">${escapeHtml(p.nickname)}</div>
-          ${isHolder ? `<div class="hp-potato">🥔</div>` : ""}
-        </div>`;
-      })
+          <div class="hp-potato" hidden>🥔</div>
+        </div>`,
+      )
       .join("");
+    cellByPlayerId.clear();
+    gridEl.querySelectorAll<HTMLElement>(".hp-cell").forEach((el) => {
+      cellByPlayerId.set(el.dataset.pid!, el);
+    });
+  }
+
+  function updateGrid(state: StateMsg) {
+    const aliveSet = new Set(state.alive);
+    for (const p of players) {
+      const cell = cellByPlayerId.get(p.playerId);
+      if (!cell) continue;
+      const isHolder = state.holderId === p.playerId;
+      cell.classList.toggle("dead", !aliveSet.has(p.playerId));
+      cell.classList.toggle("holder", isHolder);
+      cell.classList.toggle("self", p.playerId === ctx.selfPlayerId);
+      const potato = cell.querySelector<HTMLElement>(".hp-potato");
+      if (potato) potato.hidden = !isHolder;
+    }
   }
 
   function applyWelcome(msg: WelcomeMsg) {
     players = msg.players;
+    buildGrid();
     bannerEl.textContent = "watch the potato…";
   }
 
   function applyState(msg: StateMsg) {
-    renderGrid(msg);
+    updateGrid(msg);
 
     const alive = msg.alive.length;
     const total = players.length;
@@ -105,8 +120,14 @@ function createHotPotatoMatchClient(
       bannerEl.textContent = "";
     }
 
-    // Show pass button only if I'm the live holder.
+    // Show pass button only if I'm the live holder. While the pass-arm
+    // delay runs, the button is visibly disarmed (server rejects taps).
     passBtn.hidden = !(msg.phase === "live" && iAmHolder && !ctx.isSpectator);
+    if (!passBtn.hidden) {
+      const armed = Date.now() >= msg.armAt;
+      passBtn.disabled = !armed;
+      passBtn.textContent = armed ? "PASS" : "…";
+    }
   }
 
   return {

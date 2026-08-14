@@ -11,6 +11,8 @@ import type {
   GameObj,
   PosComp,
 } from "kaplay";
+import { formatRemaining, statusLine } from "../clock";
+import { createMatchFlash } from "../flash";
 import { registerMiniGameClient } from "../registry";
 import type {
   MatchClientContext,
@@ -40,6 +42,7 @@ type StateMsg = {
   paddles: { p1: { x: number; y: number }; p2: { x: number; y: number } };
   puck: { x: number; y: number };
   scores: { p1: number; p2: number };
+  deadlineAt: number;
 };
 
 const SEND_THROTTLE_MS = 33;
@@ -55,6 +58,11 @@ function createAirHockeyMatchClient(
   `;
   const stageEl = ctx.container.querySelector<HTMLElement>("#hockey-stage")!;
   const statusEl = ctx.container.querySelector<HTMLElement>("#hockey-status")!;
+  const flash = createMatchFlash(
+    ctx.container.querySelector<HTMLElement>(".hockey")!,
+  );
+  let roleHint = "";
+  let lastScores: { p1: number; p2: number } | null = null;
 
   let role: Role = "spectator";
   let fieldW = 500;
@@ -210,16 +218,38 @@ function createAirHockeyMatchClient(
     const myScore = role === "p2" ? msg.scores.p2 : msg.scores.p1;
     const theirScore = role === "p2" ? msg.scores.p1 : msg.scores.p2;
     ctx.setMatchScore(`${myScore} – ${theirScore}`);
+
+    // Visual goal cue — the silent puck recenter read as a glitch.
+    if (
+      lastScores &&
+      (msg.scores.p1 !== lastScores.p1 || msg.scores.p2 !== lastScores.p2)
+    ) {
+      if (role === "spectator") flash.flash("goal!");
+      else {
+        const iScored =
+          role === "p2"
+            ? msg.scores.p2 > lastScores.p2
+            : msg.scores.p1 > lastScores.p1;
+        flash.flash(iScored ? "goal!" : "they score!");
+      }
+    }
+    lastScores = { ...msg.scores };
+
+    statusEl.textContent = statusLine(
+      roleHint,
+      formatRemaining(msg.deadlineAt),
+    );
   }
 
   function applyWelcome(msg: WelcomeMsg) {
     if (msg.players.p1.playerId === ctx.selfPlayerId) role = "p1";
     else if (msg.players.p2.playerId === ctx.selfPlayerId) role = "p2";
     else role = "spectator";
-    statusEl.textContent =
+    roleHint =
       role === "spectator"
         ? `${msg.players.p1.nickname} vs ${msg.players.p2.nickname}`
-        : `drag to move · first to ${msg.firstTo}`;
+        : `first to ${msg.firstTo}`;
+    statusEl.textContent = roleHint;
     buildScene(msg);
   }
 
@@ -229,6 +259,7 @@ function createAirHockeyMatchClient(
       else if (msg.type === "state") applyState(msg as unknown as StateMsg);
     },
     unmount() {
+      flash.destroy();
       try {
         k?.quit();
       } catch {

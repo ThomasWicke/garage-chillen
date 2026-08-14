@@ -14,5 +14,15 @@ import "./whack-a-mole";
 import "./color-tap";
 import "./hot-potato";
 import "./memory-sequence";
+import "./tug-of-war";
+import "./penalty-shootout";
+import "./tower-stack";
+import "./balloon-pump";
+import "./fruit-frenzy";
+import "./bubble-wrap";
+import "./quick-math";
+import "./odd-one-out";
+import "./copter-cave";
+import "./meteor-dodge";
 
 export { allMiniGames, getMiniGame } from "./registry";

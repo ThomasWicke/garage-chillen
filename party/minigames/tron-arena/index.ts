@@ -346,6 +346,7 @@ const TronArenaDefinition: MiniGameDefinition = {
   tickHz: 30,
   matchTimeoutMs: TA_MATCH_TIMEOUT_MS,
   shuffleWeight: 2,
+  archived: true,
   createMatch: createTronArenaMatch,
 };
 

@@ -20,6 +20,10 @@ export type LobbyViewState = {
   selfPlayerId: string | null;
   players: PublicPlayer[];
   gmPlayerId: string | null;
+  /** Set while the host is disconnected and the takeover grace runs. */
+  gmGraceUntil: number | null;
+  /** Cumulative session points per playerId (shown when anyone has > 0). */
+  sessionScores: Record<string, number>;
   availableMinigames: MiniGameInfo[];
   sequence?: SequencePublicState;
   /** True when the player can edit their own avatar/name right now. */
@@ -145,7 +149,15 @@ function renderControls(
   if (s.sequence) {
     return renderSequencePanel(s, s.sequence, isSelfGm);
   }
-  if (!isSelfGm) return "";
+  if (!isSelfGm) {
+    // Non-hosts previously got a blank space here — first-timers had no
+    // idea the star-person has to pick a game.
+    if (s.gmGraceUntil && s.gmGraceUntil > Date.now()) {
+      return `<div class="lobby-hint">host offline — picking a new host in <span data-count-to="${s.gmGraceUntil}">…</span>s</div>`;
+    }
+    const host = s.players.find((p) => p.playerId === s.gmPlayerId);
+    return `<div class="lobby-hint">waiting for <strong>${escapeHtml(host?.nickname ?? "the host")}</strong> to start a game…</div>`;
+  }
   const someEligible = s.availableMinigames.some(
     (m) => connectedCount >= m.minPlayers && connectedCount <= m.maxPlayers,
   );
@@ -185,7 +197,7 @@ function renderSequencePanel(
   } else if (countdownSec !== null) {
     statusLine = `
       <div class="seq-status">Next round in</div>
-      <div class="seq-countdown">${countdownSec}</div>
+      <div class="seq-countdown" data-count-to="${seq.autoStartAt}">${countdownSec}</div>
     `;
   } else if (seq.remaining > 0) {
     statusLine = `<div class="seq-status">Round in progress…</div>`;
@@ -278,12 +290,18 @@ function renderPlayer(p: PublicPlayer, s: LobbyViewState): string {
     nameSlot = `<span class="name">${escapeHtml(p.nickname)}</span>`;
   }
 
+  // Session standings badge — visible as soon as anyone has points, so the
+  // running score isn't hidden until the finale.
+  const anyPoints = Object.values(s.sessionScores).some((v) => v > 0);
+  const pts = s.sessionScores[p.playerId] ?? 0;
+
   return `
     <div class="${classes.join(" ")}">
       ${avatarEl}
       ${nameSlot}
       <span class="badge">
-        ${p.isGm ? `<img class="gm-star" src="${STAR_SRC}" alt="GM" />` : ""}
+        ${anyPoints ? `<span class="pts-tag">${pts} pts</span>` : ""}
+        ${p.isGm ? `<img class="gm-star" src="${STAR_SRC}" alt="host" /><span class="host-tag">host</span>` : ""}
         ${!p.connected ? `<span class="offline-tag">offline</span>` : ""}
       </span>
     </div>

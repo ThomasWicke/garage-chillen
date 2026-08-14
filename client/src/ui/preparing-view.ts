@@ -16,7 +16,7 @@ export function renderPreparingView(
   container.innerHTML = `
     <div class="preparing">
       <div class="preparing-name">${args.minigame?.displayName ?? "starting"}</div>
-      <div class="preparing-countdown">${remaining}</div>
+      <div class="preparing-countdown" data-count-to="${args.countdownEndsAt}">${remaining}</div>
     </div>
   `;
 }

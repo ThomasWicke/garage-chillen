@@ -91,6 +91,9 @@ export type MiniGameInfo = {
   minPlayers: number;
   maxPlayers: number;
   shuffleWeight: number;
+  /** Archived games are pickable from the picker's Archive tab but are
+   *  excluded from Shuffle runs. */
+  archived: boolean;
 };
 
 export type AvailableMiniGamesMsg = {
@@ -153,7 +156,8 @@ export type LobbyStateMsg = LobbyStateBase &
       }
     | {
         state: "session-results";
-        // Phase 5 — placeholder.
+        /** Server time when the finale auto-dismisses to idle. */
+        dismissAt: number;
       }
   );
 

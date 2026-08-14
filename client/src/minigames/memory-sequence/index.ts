@@ -121,10 +121,14 @@ function createMemorySequenceMatchClient(
       .join("");
     progressEl.innerHTML = dots;
 
-    // Disable cells when not in input phase OR self is eliminated.
+    // Disable cells when not in input phase OR self is eliminated; brighten
+    // them ("ready") while it's your turn to repeat.
     const me = msg.players[ctx.selfPlayerId];
-    const interactive = msg.phase === "input" && me && !me.eliminated;
-    for (const c of cellEls) c.classList.toggle("disabled", !interactive);
+    const interactive = !!(msg.phase === "input" && me && !me.eliminated);
+    for (const c of cellEls) {
+      c.classList.toggle("disabled", !interactive);
+      c.classList.toggle("ready", interactive);
+    }
   }
 
   return {

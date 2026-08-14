@@ -1,162 +1,124 @@
-# Bug-scan follow-up (2026-08-14)
+# Follow-up notes
 
-A full review pass ran over every mini-game (server + client), both gamemodes,
-the bracket, and the lobby shell. The obvious bugs were fixed directly (see
-"What was fixed" below). Everything else worth knowing is listed here, roughly
-by how much it hurts.
+## Round 2 (2026-08-14, after playtest feedback)
 
-## What was fixed in this pass
+Everything from the playtest notes was addressed, plus the previously-listed
+UX gaps (except the color-tap colorblind item, skipped by request), plus ten
+new mini-games.
 
-- **sumo-push**: view flip was on the wrong player — both players saw their own
-  wrestler at the TOP while the hint said bottom, so opening lunges went the
-  wrong way. Also: collision "snap" impulse pulled wrestlers together instead
-  of apart (sticky contact), respawn invulnerability was only a delayed loss
-  (now clamps you inside the ring), and desktop had no controls at all.
-- **light-cycles**: p1's turn controls were fully inverted (a 180° view rotation
-  preserves left/right; the client swapped anyway). Every tap turned the bike
-  the opposite way.
-- **snake/light-cycles/tron**: single-slot pending input dropped the first of
-  two quick swipes (a tap-tap U-turn became a single turn into a wall; in snake
-  both inputs could be lost). Now a 2-deep queue, one turn per step.
-- **tron/light-cycles/snake clients**: trail sprite pools were smaller than the
-  worst-case cell count — overflow silently dropped the *newest* cells, i.e.
-  your own freshest walls went invisible. Pools now cover the full grid.
-- **tron**: the last survivor disconnecting was ranked #1 ("X survives").
-  Forfeits now rank below natural deaths.
-- **pong**: ball speed was uncapped (5%/hit) and eventually tunneled through
-  paddles → phantom goals in long rallies. Capped below the tunneling threshold.
-- **asteroids**: `set-target-angle` with `Infinity`/`1e300` hung the angle-
-  normalization loop and froze the whole room (any client could DoS the lobby).
-  Also fixed a stale header comment.
-- **air-hockey**: your own paddle was rendered from the server echo, trailing
-  your finger by a full round trip. It now renders from the local position
-  (same approach as pong).
-- **whack-a-mole**: tap mapping did manual rect math that ignored letterbox
-  scaling — edge/bottom moles were untappable on most phone aspect ratios. Now
-  uses kaplay's letterbox-aware input like every other game. Also: LMS now
-  gates match messages to actual participants (an outsider could previously
-  score and win the round).
-- **memory-sequence**: the 200ms gap between flashes was never rendered, so
-  repeated cells (e.g. [2,2]) merged into one long flash — ~58% of round-1
-  sequences were uncountable. Core mechanic fixed.
-- **memory-sequence / color-tap**: the end-of-match `setTimeout` raced the tick
-  (spurious extra round could flash) and leaked past cleanup. Now tick-driven.
-- **reaction-duel**: the exact future GO time was broadcast during the "armed"
-  phase — a modified client could schedule a 0ms "reaction". Masked.
-- **hot-potato**: if the holder disconnected during warm-up, the replacement's
-  hidden timer burned through the frozen 3s and could pop ~1s after GO.
-- **flappy-bird**: same-tick deaths were ranked by lobby-join order (roster
-  bias, and a shared final pipe crowned a fake "survivor"). Same-tick deaths
-  now share a rank; a final double-KO is reported as a tie.
-- **tournament**: one >10s disconnect silently forfeited ALL your future
-  matches (the disconnected-set was never cleared on rejoin). Draw/force-ended
-  matches always advanced bracket slot "a" (systematic seeding bias) — now
-  random as documented.
-- **last-man-standing**: a force-ended match awarded EVERY player 1st place
-  (10 pts each, corrupting session standings). Match-end message ordering also
-  caused a pointless remount ("connecting…" flash) on every LMS match end.
-- **lobby server**: mid-round refresh/join received the "playing" state before
-  the player list, so the bracket rendered all names as "?" and match scenes
-  got zero participants. Round-results briefly showed the previous round's
-  stale dismiss countdown. Session scores now reset when a new shuffle run
-  starts (previously the finale podium accumulated every past run forever —
-  pick a different reset point if you'd rather have a GM button).
-- **lobby client**: leaked edit-error timer on route teardown.
+### Playtest feedback → what changed
+- **Asteroids**: central bullet-absorbing "rock" (ship-sized) blocks the
+  spawn-to-spawn firing lane, so spam-firing from spawn no longer beats
+  moving. Also: hit radius tightened 22→16 (matched to the sprite),
+  wraparound-aware hit test, role hint no longer wiped after one frame.
+- **Archive tabs**: the picker now has Recommended / Archive tabs.
+  **Light Cycles, Tron Arena, and Air Hockey are archived** — GM can still
+  pick them from the Archive tab, but Shuffle only draws from Recommended.
+  To (un)archive any game, flip `archived: true` in its server definition.
+- **Sumo Push**: lunge force halved (700 → 350 px/s).
+- **Air Hockey**: server-side max paddle speed (1800 px/s, 50ms window) —
+  teleport-taps now glide instead of jumping, killing the teleport-block and
+  infinite-swing exploits. Archived anyway per feedback.
+- **Reaction Duel**: the 10-digit number after each hit was a fractional
+  reaction-time float (the armed-delay was never rounded). Now whole ms.
+- **Hot Potato**: 600ms pass-arm delay after receiving the potato (server
+  rejects earlier passes; the button renders disarmed "…"). Spam-tapping
+  where the button will appear no longer works — everyone holds real risk.
+- **Memory Sequence**: the round-1 sequence no longer leaks into the 3-2-1
+  countdown (showCell suppressed during warm-up), and the flash is now
+  unmissable (dim 0.3 base → full-bright + thick white ring + glow, fast
+  50ms transitions; cells brighten in the input phase so "your turn" reads).
+- **Waiting times**: preparing countdown 3s → 1s; tournament intro 8s → 5s
+  and now leads with the mini-game name (LMS intro already did). Warm-up
+  stays 3s. Net: tournament ~14s → ~9s of waiting, LMS ~9s → ~7s.
+- **Black bar above player** (Flappy, also snake/cycles/tron): that was the
+  "▼ YOU" marker — kaplay `text()` rendering as a glyph-less black bar. All
+  four games now draw a triangle marker instead. Rule of thumb going
+  forward: never use kaplay `text()`; put text in DOM overlays.
 
-`npx tsc --noEmit` and `vite build` pass.
+### UX gaps closed
+- Match clock (m:ss to deadline) in the status line of every continuous
+  game (pong, air hockey, sumo, snake, cycles, tron, asteroids, flappy).
+- Visual (no sound) goal/ring-out flashes in pong, air hockey, sumo via a
+  shared `.match-flash` overlay (`client/src/minigames/flash.ts`).
+- LMS spectator view: late joiners / non-participants now watch the live
+  scene with the yellow SPECTATING chrome instead of a static text line.
+- Spectators no longer get the controls hint on the warm-up overlay.
+- Lobby: non-hosts see "waiting for <host> to start a game…" (and a host-
+  offline countdown during GM grace); the host star is labeled; per-player
+  session points show in the roster once anyone has scored; round-results
+  rows show running totals (Σ); the finale shows its auto-dismiss countdown
+  to non-hosts (new `dismissAt` on the session-results state).
+- The 500ms lobby interval no longer rebuilds the DOM (it patches only
+  `[data-count-to]` elements) — GM buttons stop eating taps, the nickname
+  caret stops jumping.
+- Snake turns fire on swipe-threshold during the drag, not on finger-lift.
+- Hot Potato client builds its grid once and toggles classes (no more 30Hz
+  innerHTML/img rebuild).
+- Flappy collision is proper circle-vs-rect (no more corner deaths).
 
-## Known issues NOT fixed (decisions or bigger work)
+### Ten new mini-games (all in Recommended)
+Tournament 1v1: **Tug of War** (rate-limited tap masher), **Penalty
+Shootout** (left/center/right mind-games, picks hidden until reveal).
+Last-man-standing: **Tower Stack** (timing stacker, height placements),
+**Balloon Pump** (press-your-luck, 3 rounds, hidden pop thresholds),
+**Fruit Frenzy** (shared falling fruit tap-race, bombs stun), **Bubble Wrap**
+(pop your 54-bubble sheet fastest, swipe-popping), **Quick Math** (8 rounds,
+first correct +3 / correct +1, answers hidden until reveal), **Odd One Out**
+(spot the off-shade tile, shrinking delta, wrong tap locks you out),
+**Copter Cave** (hold-to-rise shared cave survival), **Meteor Dodge**
+(drag-to-dodge falling meteors, speed-capped movement).
+All follow the audited contract: tick-driven timers only, warm-up frozen +
+input-gated, deadline-graceful, same-tick deaths share placement ranks,
+forfeits rank below natural deaths, validated inputs, welcome-replay
+reconnect safe. `tsc` + `vite build` pass with all 23 games registered.
 
-### Gameplay fairness
-- **Reflex games are decided by latency**: reaction-duel, color-tap and
-  contested whack-a-mole moles all use raw server arrival time. A 100ms-RTT
-  player loses to a 20ms player before human reaction even starts, and
-  color-tap's 500ms window shrinks by your latency. Proper fix: client-side
-  tap timestamps plus a per-connection clock-offset estimate (ping handshake).
-- **Air-hockey tap-to-teleport**: the server accepts any paddle position jump,
-  and the inferred swing velocity rewards teleporting — tap-across-the-half
-  gives a max-speed shot every time. Needs a server-side max paddle speed.
-- **Tournament: an absent player can keep advancing** by forfeit (both-gone
-  matches advance someone) up to a podium finish. Arguably fine; flagging it.
-- **Reaction-duel plays all 5 rounds even at 3-0** (up to ~28 dead seconds).
+### Still open (unchanged from round 1)
+- Reflex-game latency fairness (reaction-duel / color-tap / contested moles
+  use raw server arrival time; needs tap timestamps + clock-offset sync).
+- Tournament: an absent player can keep advancing by forfeit to a podium.
+- Reaction Duel plays all 5 rounds even at 3-0.
+- Client countdowns trust the phone clock (no server-offset estimation).
+- "Create lobby" doesn't check code availability (1-in-923k collision).
+- Cross-round leave-timer landmine and sync-endRound landmine in
+  party/server.ts (see round-1 notes below).
+- New-game polish pass pending a real playtest (10 fresh games will surely
+  have feel issues — tune constants, not structures).
 
-### UX gaps (all games)
-- **No on-screen match clock anywhere** — every server broadcasts `deadlineAt`
-  every tick and no client renders it, so "time's up · leader wins" always
-  arrives with zero warning. One shared countdown widget would fix all games.
-- **No goal/ring-out/death feedback moment** in pong, air-hockey, sumo — the
-  ball/puck silently recenters, which reads as a glitch. A 500ms flash/pause
-  cue would do a lot.
-- **Color-tap is colorblind-hostile**: color is the only channel and red/green
-  are both present. Add symbols or labels to the signal + buttons.
-- **LMS has no spectator view**: late joiners stare at "match in progress ·
-  spectating" static text for up to 3 minutes even though full match state is
-  streaming to them. Tournament already has watchable spectating; LMS's client
-  just never mounts the scene for non-participants.
-- **Lobby polish**: the 500ms full-DOM rerender can eat GM button taps and
-  makes the nickname caret jump while editing; non-GM players in an idle lobby
-  get zero guidance ("waiting for the host…" is never shown, GM is only an
-  unlabeled star); no cumulative scoreboard is visible between rounds (only
-  your own number in the toolbar); the session finale vanishes for non-GMs
-  with no countdown.
-- Spectators of a match get the warm-up overlay *with controls hint* for a
-  match they can't play.
-- Asteroids: server hit radius (22) is visibly larger than the drawn ship
-  (~15) — feels like phantom hits; the role hint is wiped after one frame; the
-  hit test isn't wraparound-aware (1-tick delay at the seam).
-- Flappy: circle-vs-rect collision treats the bird as a square (corner deaths).
-- Snake: turns register on finger-lift; detecting the swipe threshold during
-  `onTouchMove` would feel snappier at 167ms/step.
-- Hot-potato client rebuilds the whole grid `innerHTML` (including `<img>`s)
-  at 30Hz.
-
-### Landmines (harmless today, will bite later)
-- `party/server.ts`: if a future gamemode calls `endRound` synchronously inside
-  `createSession`, the server dereferences `this.active` after it was nulled.
-- All countdown/warm-up UI compares server timestamps to client `Date.now()`
-  with no offset estimation — a skewed phone clock shows wrong or missing
-  overlays (server stays authoritative, so gameplay is unaffected).
-- A player disconnecting late in round N can fire `onPlayerLeft` into round
-  N+1's session (~10s leave grace crosses rounds). Current games no-op on
-  unknown ids, but new games must keep doing so.
-- Snake's "YOU" marker timing breaks silently if warm-up ever exceeds 7s.
-- "Create lobby" doesn't check code availability (1-in-923k collision joins a
-  stranger's lobby).
-- Game-picker drawer snapshots the player count at open (stale enable/disable;
-  server re-validates, so worst case is a dead tap).
-
-## Testing workflow ideas (not started — just notes)
+## Testing workflow ideas (shelved by request — unchanged)
 
 The pain: localStorage holds ONE identity per browser profile, so multiplayer
 testing means N incognito windows. Ideas, roughly in order of value/effort:
 
-1. **Headless bot script** (biggest bang, zero app changes): a Node script
-   using `partysocket` that spawns N fake players into a lobby code —
-   `npm run bots -- ABCD 4`. The wire protocol is fully typed in
-   `party/protocol.ts`; identity is just a UUID + `identify` message. Bots
-   auto-answer per-game with naive inputs (random turns every ~500ms, random
-   taps, flap on a timer, correct memory-sequence taps read straight from the
-   `state` broadcasts). You play on one real phone/browser; the bots fill the
-   bracket.
-2. **Identity override via URL param**: `?pid=bot1&nick=Bot1` bypassing
-   localStorage in `ensureIdentity()`. Instantly makes N *tabs* (not incognito
-   windows) viable, and enables idea 3.
-3. **Multi-client harness page**: a dev-only `/test` route rendering 4–6
-   iframes of the app side by side, each with a `?pid=` identity. One browser
-   window = a whole lobby, every perspective visible at once.
-4. **Server test mode**: rooms with a `TEST` prefix (or `partykit dev` env
-   flag) get: near-zero countdowns (prepare/intro/warm-up), a debug message to
-   force-start a specific mini-game, and optionally server-side bots (fake
-   registry entries + per-game AI drivers calling `session.onMessage`). This
-   is the "shortcut the UI and waiting screens" path — combined with idea 1
-   you're inside any chosen mini-game in ~2 seconds.
-5. **Deterministic sim tests**: match sessions are already factory functions
-   with injected `broadcast`/`endMatch`, but they call `Date.now()` directly.
-   Injecting a clock via `MatchContext` (e.g. `ctx.now()`) would let vitest
-   step ticks deterministically and unit-test collision/placement logic (this
-   pass found several placement bugs a 20-line test would have caught).
-6. **Playwright multi-context e2e** later: one browser, N contexts, scripted
-   full rounds + screenshots per mini-game as a smoke suite.
+1. **Headless bot script**: a Node script using `partysocket` that spawns N
+   fake players into a lobby code — `npm run bots -- ABCD 4`. Protocol is
+   fully typed in `party/protocol.ts`; identity is just a UUID + `identify`.
+   Bots answer per-game with naive inputs. You play on one real device.
+2. **Identity override via URL param** (`?pid=bot1&nick=Bot1`) bypassing
+   localStorage — makes N plain tabs viable and enables idea 3.
+3. **Multi-client harness page**: dev-only `/test` route with 4–6 iframes,
+   each with a `?pid=` identity — a whole lobby in one window.
+4. **Server test mode**: TEST-prefixed rooms get near-zero countdowns, a
+   debug force-start message, optionally server-side bots.
+5. **Deterministic sim tests**: inject a clock via `MatchContext`
+   (`ctx.now()`) so vitest can step ticks and unit-test collision/placement
+   logic — several round-1 placement bugs would have been caught by tests.
+6. **Playwright multi-context e2e** as a later smoke suite.
 
-Recommended starting combo: 1 + 2 (an evening of work), then 4 when you next
-touch the server.
+Recommended starting combo: 1 + 2, then 4.
+
+---
+
+## Round 1 (2026-08-14, initial bug-scan) — for reference
+
+~25 bugs fixed across all games and both gamemodes: inverted controls in
+Sumo Push (wrong-player view flip) and Light Cycles (p1 turn swap); an
+Infinity-angle DoS in Asteroids that froze the whole room; tournaments
+auto-forfeiting reconnected players; LMS force-end awarding everyone 1st
+place; Tron crowning a disconnecting survivor; pong ball tunneling; lost
+swipe inputs (single-slot queues) in all grid games; undersized sprite pools
+rendering invisible walls; whack-a-mole taps ignoring letterbox and scoring
+for non-participants; memory-sequence flash gaps never rendering; air-hockey
+paddle lagging a full RTT; flappy roster-order placement bias; session
+scores accumulating across shuffle runs; mid-round refresh showing "?" for
+every bracket name; stale round-results countdowns; a lobby timer leak.

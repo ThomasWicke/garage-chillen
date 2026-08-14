@@ -9,8 +9,8 @@ import type {
   GameObj,
   PosComp,
   RectComp,
-  TextComp,
 } from "kaplay";
+import { formatRemaining, statusLine } from "../clock";
 import { registerMiniGameClient } from "../registry";
 import type {
   MatchClientContext,
@@ -19,7 +19,7 @@ import type {
 } from "../types";
 
 type Sprite = GameObj<PosComp | RectComp | ColorComp | AnchorComp>;
-type MarkerSprite = GameObj<PosComp | TextComp | ColorComp | AnchorComp>;
+type MarkerSprite = GameObj<PosComp | ColorComp>;
 type Role = "p1" | "p2" | "spectator";
 type Dir = "up" | "down" | "left" | "right";
 type Cell = { x: number; y: number };
@@ -42,6 +42,7 @@ type StateMsg = {
     p1: { head: Cell; dir: Dir; alive: boolean; trail: Cell[] };
     p2: { head: Cell; dir: Dir; alive: boolean; trail: Cell[] };
   };
+  deadlineAt: number;
 };
 
 function createLightCyclesMatchClient(
@@ -119,12 +120,14 @@ function createLightCyclesMatchClient(
     }
 
     if (!ctx.isSpectator) {
+      // Drawn triangle instead of kaplay text() — text rendered as a glyph-
+      // less black bar on some devices.
       youMarker = k.add([
-        k.text("▼ YOU", { size: 18 }),
+        k.polygon([k.vec2(-10, -12), k.vec2(10, -12), k.vec2(0, 0)]),
         k.pos(-99, -99),
         k.color(255, 255, 255),
-        k.anchor("bot"),
-      ]);
+        k.outline(2, k.rgb(20, 20, 30)),
+      ]) as unknown as MarkerSprite;
     }
 
     if (!ctx.isSpectator) {
@@ -195,11 +198,12 @@ function createLightCyclesMatchClient(
       s.hidden = true;
     }
 
+    const clock = formatRemaining(msg.deadlineAt);
     if (role !== "spectator") {
       const myAlive = role === "p2" ? msg.bikes.p2.alive : msg.bikes.p1.alive;
-      statusEl.textContent = myAlive ? "" : "you crashed";
+      statusEl.textContent = statusLine(myAlive ? null : "you crashed", clock);
     } else {
-      statusEl.textContent = "";
+      statusEl.textContent = clock;
     }
 
     // Float the "YOU" tag above the own bike while it's active.

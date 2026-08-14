@@ -122,9 +122,12 @@ function createMemorySequenceMatch(ctx: MatchContext): MatchSession {
       showIdx: state.showIdx,
       // null during the inter-flash gap too — without that, repeated cells
       // (e.g. [2,2]) render as one continuous flash and can't be counted.
+      // Also null during warm-up: the round-1 sequence must not leak into
+      // the 3-2-1-GO countdown.
       showCell:
         state.phase === "show" &&
         inFlash &&
+        Date.now() >= ctx.startAt &&
         state.showIdx >= 0 &&
         state.showIdx < state.sequence.length
           ? state.sequence[state.showIdx]

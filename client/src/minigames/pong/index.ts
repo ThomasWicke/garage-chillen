@@ -15,6 +15,8 @@ import type {
   PosComp,
   RectComp,
 } from "kaplay";
+import { formatRemaining, statusLine } from "../clock";
+import { createMatchFlash } from "../flash";
 import { registerMiniGameClient } from "../registry";
 import type {
   MatchClientContext,
@@ -61,6 +63,9 @@ function createPongMatchClient(ctx: MatchClientContext): MatchClientSession {
 
   const stageEl = ctx.container.querySelector<HTMLElement>("#pong-stage")!;
   const statusEl = ctx.container.querySelector<HTMLElement>("#pong-status")!;
+  const flash = createMatchFlash(
+    ctx.container.querySelector<HTMLElement>(".pong")!,
+  );
 
   let role: Role | null = null;
   let fieldW = 500;
@@ -78,6 +83,8 @@ function createPongMatchClient(ctx: MatchClientContext): MatchClientSession {
   let myPaddleX = fieldW / 2;
   let lastSentX = -1;
   let lastSentAt = 0;
+  let roleHint = "";
+  let lastScores: { p1: number; p2: number } | null = null;
 
   // View flip for p1 only (so each participant's own paddle is at the bottom).
   // Spectators see the canonical orientation (no flip).
@@ -194,7 +201,25 @@ function createPongMatchClient(ctx: MatchClientContext): MatchClientSession {
     const theirScore = role === "p2" ? msg.scores.p1 : msg.scores.p2;
     ctx.setMatchScore(`${myScore} – ${theirScore}`);
 
-    statusEl.textContent = msg.running ? "" : "round over";
+    // Visual goal cue — the silent ball recenter read as a glitch.
+    if (
+      lastScores &&
+      (msg.scores.p1 !== lastScores.p1 || msg.scores.p2 !== lastScores.p2)
+    ) {
+      if (role === "spectator") flash.flash("goal!");
+      else {
+        const iScored =
+          role === "p2"
+            ? msg.scores.p2 > lastScores.p2
+            : msg.scores.p1 > lastScores.p1;
+        flash.flash(iScored ? "your point!" : "they score!");
+      }
+    }
+    lastScores = { ...msg.scores };
+
+    statusEl.textContent = msg.running
+      ? statusLine(roleHint, formatRemaining(msg.deadlineAt))
+      : "round over";
   }
 
   function applyWelcome(msg: WelcomeMsg) {
@@ -208,10 +233,11 @@ function createPongMatchClient(ctx: MatchClientContext): MatchClientSession {
     paddleH = msg.paddle.h;
     ballSize = msg.ball;
     myPaddleX = fieldW / 2;
-    statusEl.textContent =
+    roleHint =
       role === "spectator"
         ? `${msg.players.p1.nickname} vs ${msg.players.p2.nickname}`
-        : `playing as ${role.toUpperCase()} · first to ${msg.firstTo}`;
+        : `first to ${msg.firstTo}`;
+    statusEl.textContent = roleHint;
     buildScene();
   }
 
@@ -224,6 +250,7 @@ function createPongMatchClient(ctx: MatchClientContext): MatchClientSession {
       }
     },
     unmount() {
+      flash.destroy();
       try {
         k?.quit();
       } catch {

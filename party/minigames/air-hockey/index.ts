@@ -22,6 +22,11 @@ export const AH_GOAL_HALF_WIDTH = 90;
 const INITIAL_PUCK_SPEED = 240;
 const PUCK_SPEED_BONUS_ON_HIT = 1.04;
 const MAX_PUCK_SPEED = 720;
+/** Max paddle travel speed (px/s). Fast real drags stay under this; tapping
+ *  the far side of your half to teleport-block does not — the paddle now
+ *  glides toward the tap instead of jumping, and the inferred swing velocity
+ *  can no longer reach absurd values. */
+const MAX_PADDLE_SPEED = 1800;
 const PUCK_DAMPING_PER_SEC = 0.7; // mild damping
 const FIRST_TO = 5;
 const AH_MATCH_TIMEOUT_MS = 120_000;
@@ -278,11 +283,22 @@ function createAirHockeyMatch(ctx: MatchContext): MatchSession {
       const maxX = AH_FIELD_W - AH_PADDLE_RADIUS;
       const minY = p === "p1" ? AH_PADDLE_RADIUS : AH_FIELD_H / 2 + AH_PADDLE_RADIUS;
       const maxY = p === "p1" ? AH_FIELD_H / 2 - AH_PADDLE_RADIUS : AH_FIELD_H - AH_PADDLE_RADIUS;
-      const newX = clamp(x, minX, maxX);
-      const newY = clamp(y, minY, maxY);
+      let newX = clamp(x, minX, maxX);
+      let newY = clamp(y, minY, maxY);
       const now = Date.now();
       if (paddle.lastUpdateAt > 0) {
-        const dt = Math.max(0.001, (now - paddle.lastUpdateAt) / 1000);
+        // Clamp per-message travel to MAX_PADDLE_SPEED. Cap the time window
+        // at 50ms so a pause before a tap doesn't re-enable teleporting.
+        const dtMs = Math.max(1, now - paddle.lastUpdateAt);
+        const maxStep = (MAX_PADDLE_SPEED * Math.min(dtMs, 50)) / 1000;
+        const ddx = newX - paddle.x;
+        const ddy = newY - paddle.y;
+        const d = Math.hypot(ddx, ddy);
+        if (d > maxStep) {
+          newX = paddle.x + (ddx / d) * maxStep;
+          newY = paddle.y + (ddy / d) * maxStep;
+        }
+        const dt = dtMs / 1000;
         paddle.vx = (newX - paddle.x) / dt;
         paddle.vy = (newY - paddle.y) / dt;
       }
@@ -315,6 +331,7 @@ const AirHockeyDefinition: MiniGameDefinition = {
   tickHz: 30,
   matchTimeoutMs: AH_MATCH_TIMEOUT_MS,
   shuffleWeight: 2,
+  archived: true,
   createMatch: createAirHockeyMatch,
 };
 

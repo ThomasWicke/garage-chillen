@@ -70,7 +70,11 @@ function createReactionDuelMatch(ctx: MatchContext): MatchSession {
   });
 
   function scheduleArmed() {
-    const delay = MIN_DELAY_MS + Math.random() * (MAX_DELAY_MS - MIN_DELAY_MS);
+    // Round to whole ms — a fractional signalAt makes every displayed
+    // reaction time a 10-digit float.
+    const delay = Math.round(
+      MIN_DELAY_MS + Math.random() * (MAX_DELAY_MS - MIN_DELAY_MS),
+    );
     state.phase = "armed";
     // First round is scheduled at creation, during warm-up — anchor it to
     // startAt so the random delay counts from GO. Later rounds happen during

@@ -49,6 +49,8 @@ type ViewState = {
   lastResult: RoundResult | null;
   /** Server time (ms) when round-results auto-dismisses; 0 outside of round-results state. */
   resultsDismissAt: number;
+  /** Server time (ms) when the session finale auto-dismisses; 0 otherwise. */
+  sessionResultsDismissAt: number;
   sessionScores: Record<string, number>;
   /** Mini-game-pushed match score, e.g. "3 – 1". Cleared on teardown. */
   matchScore: string | null;
@@ -89,6 +91,7 @@ export function renderLobby(rawCode: string): () => void {
     prepareCountdownEndsAt: 0,
     lastResult: null,
     resultsDismissAt: 0,
+    sessionResultsDismissAt: 0,
     sessionScores: {},
     matchScore: null,
     sequence: null,
@@ -211,6 +214,8 @@ export function renderLobby(rawCode: string): () => void {
           selfPlayerId: state.selfPlayerId,
           players: state.players,
           gmPlayerId: state.gmPlayerId,
+          gmGraceUntil: state.gmGraceUntil,
+          sessionScores: state.sessionScores,
           availableMinigames: state.availableMinigames,
           sequence: state.sequence ?? undefined,
           editable,
@@ -379,6 +384,7 @@ export function renderLobby(rawCode: string): () => void {
           selfPlayerId: state.selfPlayerId,
           isGm,
           dismissAt: state.resultsDismissAt,
+          sessionScores: state.sessionScores,
         },
         sceneEl,
         {
@@ -397,6 +403,7 @@ export function renderLobby(rawCode: string): () => void {
           scores: state.sessionScores,
           selfPlayerId: state.selfPlayerId,
           isGm,
+          dismissAt: state.sessionResultsDismissAt,
         },
         sceneEl,
         {
@@ -467,10 +474,16 @@ export function renderLobby(rawCode: string): () => void {
           state.resultsDismissAt = msg.dismissAt;
           state.activeMinigameId = null;
           state.activeGamemodeId = null;
+        } else if (msg.state === "session-results") {
+          state.sessionResultsDismissAt = msg.dismissAt;
+          state.activeMinigameId = null;
+          state.activeGamemodeId = null;
+          state.lastResult = null;
         } else {
           state.activeMinigameId = null;
           state.activeGamemodeId = null;
           state.lastResult = null;
+          state.sessionResultsDismissAt = 0;
         }
       } else if (msg.scope === "minigame") {
         // Route by target. Both targets go through the gamemode client; the
@@ -487,23 +500,17 @@ export function renderLobby(rawCode: string): () => void {
     },
   });
 
+  // Countdown ticks patch ONLY elements marked data-count-to instead of
+  // rebuilding the whole view — the old 500ms full rerender recreated
+  // buttons mid-tap (GM taps silently swallowed) and yanked the nickname
+  // caret while editing.
   const interval = setInterval(() => {
-    if (state.lobbyState === "preparing") {
-      rerender();
-    } else if (
-      state.lobbyState === "idle" &&
-      state.sequence?.autoStartAt &&
-      state.sequence.autoStartAt > Date.now()
-    ) {
-      rerender();
-    } else if (
-      state.lobbyState === "round-results" &&
-      state.resultsDismissAt > Date.now()
-    ) {
-      rerender();
-    } else if (state.gmGraceUntil !== null && state.gmGraceUntil > Date.now()) {
-      rerender();
-    }
+    sceneEl.querySelectorAll<HTMLElement>("[data-count-to]").forEach((el) => {
+      const t = Number(el.dataset.countTo);
+      if (!Number.isFinite(t)) return;
+      const sec = String(Math.max(0, Math.ceil((t - Date.now()) / 1000)));
+      if (el.textContent !== sec) el.textContent = sec;
+    });
   }, 500);
 
   return () => {

@@ -22,25 +22,59 @@ export function openGamePickerDrawer(props: GamePickerDrawerProps): () => void {
         <div class="drawer-title">Pick a mini-game</div>
         <button class="drawer-close" type="button" aria-label="Close">×</button>
       </div>
+      <div class="drawer-tabs" id="drawer-tabs">
+        <button class="drawer-tab active" data-tab="recommended" type="button">Recommended</button>
+        <button class="drawer-tab" data-tab="archive" type="button">Archive</button>
+      </div>
       <div class="drawer-body" id="drawer-body"></div>
     </div>
   `;
 
   const sheet = overlay.querySelector<HTMLElement>(".drawer-sheet")!;
   const body = overlay.querySelector<HTMLElement>("#drawer-body")!;
+  const tabsEl = overlay.querySelector<HTMLElement>("#drawer-tabs")!;
   const closeBtn = overlay.querySelector<HTMLButtonElement>(".drawer-close")!;
 
-  body.innerHTML = props.minigames
-    .map((m) => renderCard(m, props.connectedCount))
-    .join("");
+  let activeTab: "recommended" | "archive" = "recommended";
 
-  body.querySelectorAll<HTMLButtonElement>("[data-pick]").forEach((btn) => {
+  function renderBody() {
+    const games = props.minigames.filter((m) =>
+      activeTab === "archive" ? m.archived : !m.archived,
+    );
+    const note =
+      activeTab === "archive"
+        ? `<div class="picker-archive-note">Archived games can still be picked here, but never appear in Shuffle.</div>`
+        : "";
+    const cards =
+      games.length > 0
+        ? games.map((m) => renderCard(m, props.connectedCount)).join("")
+        : `<div class="picker-archive-note">nothing here</div>`;
+    body.innerHTML = note + cards;
+    body.querySelectorAll<HTMLButtonElement>("[data-pick]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const id = btn.dataset.pick!;
+        props.onPick(id);
+        close();
+      });
+    });
+  }
+
+  tabsEl.querySelectorAll<HTMLButtonElement>("[data-tab]").forEach((btn) => {
     btn.addEventListener("click", () => {
-      const id = btn.dataset.pick!;
-      props.onPick(id);
-      close();
+      activeTab = btn.dataset.tab as "recommended" | "archive";
+      tabsEl
+        .querySelectorAll(".drawer-tab")
+        .forEach((el) =>
+          el.classList.toggle(
+            "active",
+            (el as HTMLElement).dataset.tab === activeTab,
+          ),
+        );
+      renderBody();
     });
   });
+
+  renderBody();
 
   function close() {
     sheet.classList.add("closing");

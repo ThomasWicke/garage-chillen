@@ -250,6 +250,7 @@ const LightCyclesDefinition: MiniGameDefinition = {
   tickHz: 30,
   matchTimeoutMs: LC_MATCH_TIMEOUT_MS,
   shuffleWeight: 3,
+  archived: true,
   createMatch: createLightCyclesMatch,
 };
 

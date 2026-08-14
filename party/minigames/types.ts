@@ -94,5 +94,8 @@ export type MiniGameDefinition = {
    *  number = appears more often when the GM clicks Shuffle. Quick games
    *  should be 3-5; long games 1-2. Default: 1. */
   shuffleWeight?: number;
+  /** Archived games live in the picker's "Archive" tab: the GM can still
+   *  pick them manually, but they never appear in Shuffle runs. */
+  archived?: boolean;
   createMatch: (ctx: MatchContext) => MatchSession;
 };

@@ -63,9 +63,19 @@ function createLmsClientSession(
       return;
     }
 
-    if (lmsState.phase === "playing" && isParticipant()) {
+    if (lmsState.phase === "playing") {
+      // Everyone gets the live scene — non-participants (late joiners,
+      // intro-leavers) watch as spectators instead of staring at a static
+      // "spectating" text line while the match state streams to them anyway.
       introEl.hidden = true;
       matchEl.hidden = false;
+      const spectating = !isParticipant();
+      matchEl.classList.toggle("spectating", spectating);
+      if (spectating) {
+        matchEl.setAttribute("data-spectator-label", "SPECTATING");
+      } else {
+        matchEl.removeAttribute("data-spectator-label");
+      }
       if (activeMatchId !== lmsState.matchId) {
         mountMatch(lmsState.matchId);
       }
@@ -87,14 +97,15 @@ function createLmsClientSession(
       nickname: p.nickname,
       avatarId: p.avatarId,
     }));
+    const spectating = !isParticipant();
     const matchCtx: MatchClientContext = {
       container: matchEl,
       matchId,
       selfPlayerId: ctx.selfPlayerId,
       participants,
-      // LMS is FFA — everyone in the lobby is a participant, no spectators.
-      isSpectator: false,
-      send: (m) => ctx.sendMatch(matchId, m),
+      isSpectator: spectating,
+      // Spectators should never send — defensive no-op.
+      send: spectating ? () => {} : (m) => ctx.sendMatch(matchId, m),
       setMatchScore: (text) => ctx.setMatchScore(text),
     };
     try {
@@ -109,7 +120,7 @@ function createLmsClientSession(
       warmupCleanup = showWarmupOverlay(
         matchEl,
         lmsState.goAt,
-        ctx.miniGame.controlsHint ?? null,
+        spectating ? null : (ctx.miniGame.controlsHint ?? null),
       );
     }
   }
@@ -157,8 +168,6 @@ function createLmsClientSession(
             .join("")
         }</div>
       `;
-    } else if (lmsState.phase === "playing" && !isParticipant()) {
-      body = `<div class="lms-spectating">match in progress · spectating</div>`;
     } else if (lmsState.phase === "complete") {
       body = `<div class="lms-complete">match complete</div>`;
     }

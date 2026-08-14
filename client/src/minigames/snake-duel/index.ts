@@ -10,8 +10,8 @@ import type {
   GameObj,
   PosComp,
   RectComp,
-  TextComp,
 } from "kaplay";
+import { formatRemaining, statusLine } from "../clock";
 import { registerMiniGameClient } from "../registry";
 import type {
   MatchClientContext,
@@ -20,7 +20,7 @@ import type {
 } from "../types";
 
 type Sprite = GameObj<PosComp | RectComp | ColorComp | AnchorComp>;
-type MarkerSprite = GameObj<PosComp | TextComp | ColorComp | AnchorComp>;
+type MarkerSprite = GameObj<PosComp | ColorComp>;
 type Role = "p1" | "p2" | "spectator";
 type Dir = "up" | "down" | "left" | "right";
 type Cell = { x: number; y: number };
@@ -44,6 +44,7 @@ type StateMsg = {
     p2: { cells: Cell[]; alive: boolean; dir: Dir };
   };
   food: Cell[];
+  deadlineAt: number;
 };
 
 const SWIPE_THRESHOLD = 22;
@@ -142,12 +143,14 @@ function createSnakeDuelMatchClient(
     }
 
     if (!ctx.isSpectator) {
+      // Drawn triangle instead of kaplay text() — text rendered as a glyph-
+      // less black bar on some devices.
       youMarker = k.add([
-        k.text("▼ YOU", { size: 18 }),
+        k.polygon([k.vec2(-10, -12), k.vec2(10, -12), k.vec2(0, 0)]),
         k.pos(-99, -99),
         k.color(255, 255, 255),
-        k.anchor("bot"),
-      ]);
+        k.outline(2, k.rgb(20, 20, 30)),
+      ]) as unknown as MarkerSprite;
     }
 
     // Swipe handling.
@@ -161,23 +164,34 @@ function createSnakeDuelMatchClient(
       const beginSwipe = (pos: { x: number; y: number }) => {
         touchStart = { x: pos.x, y: pos.y, t: Date.now() };
       };
-      const endSwipe = (pos: { x: number; y: number }) => {
-        if (!touchStart) return;
+      const trySwipe = (pos: { x: number; y: number }): boolean => {
+        if (!touchStart) return false;
         const dx = pos.x - touchStart.x;
         const dy = pos.y - touchStart.y;
+        if (Math.hypot(dx, dy) < SWIPE_THRESHOLD) return false;
         touchStart = null;
-        if (Math.hypot(dx, dy) < SWIPE_THRESHOLD) return;
         let displayDir: Dir;
         if (Math.abs(dx) > Math.abs(dy)) displayDir = dx > 0 ? "right" : "left";
         else displayDir = dy > 0 ? "down" : "up";
         sendDisplayDir(displayDir);
+        return true;
       };
       kk.onTouchStart(beginSwipe);
-      kk.onTouchEnd(endSwipe);
+      // Fire the turn the moment the threshold is crossed — waiting for
+      // finger-lift added a full held-swipe of latency at 167ms per step.
+      kk.onTouchMove(trySwipe);
+      kk.onTouchEnd((pos) => {
+        trySwipe(pos);
+        touchStart = null;
+      });
       // Desktop fallback: mouse-drag swipes + arrow keys (previously a noop,
       // leaving desktop participants with no controls at all).
       kk.onMousePress(() => beginSwipe(kk.mousePos()));
-      kk.onMouseRelease(() => endSwipe(kk.mousePos()));
+      kk.onMouseMove(() => trySwipe(kk.mousePos()));
+      kk.onMouseRelease(() => {
+        trySwipe(kk.mousePos());
+        touchStart = null;
+      });
       kk.onKeyPress("up", () => sendDisplayDir("up"));
       kk.onKeyPress("down", () => sendDisplayDir("down"));
       kk.onKeyPress("left", () => sendDisplayDir("left"));
@@ -245,10 +259,11 @@ function createSnakeDuelMatchClient(
     }
 
     const myAlive = role === "p2" ? msg.snakes.p2.alive : msg.snakes.p1.alive;
+    const clock = formatRemaining(msg.deadlineAt);
     if (role === "spectator") {
-      statusEl.textContent = "";
+      statusEl.textContent = clock;
     } else {
-      statusEl.textContent = myAlive ? "" : "you died";
+      statusEl.textContent = statusLine(myAlive ? null : "you died", clock);
     }
 
     // Float the "YOU" tag above the own head while it's active.

@@ -118,6 +118,10 @@ function createFlappyBirdMatch(ctx: MatchContext): MatchSession {
     });
   }
 
+  function clampNum(v: number, lo: number, hi: number): number {
+    return Math.max(lo, Math.min(hi, v));
+  }
+
   function step(dt: number) {
     if (state.ended) return;
 
@@ -152,16 +156,25 @@ function createFlappyBirdMatch(ctx: MatchContext): MatchSession {
         continue;
       }
 
-      // Pipes (AABB).
+      // Pipes — proper circle-vs-rect: closest point on the pipe rectangle
+      // to the bird center, then radius check. The old double-AABB treated
+      // the round bird as a square and killed at pipe corners the drawn
+      // circle never touched.
       for (const p of state.pipes) {
-        const dx = Math.abs(FB_BIRD_X - p.x);
-        if (dx < FB_PIPE_WIDTH / 2 + FB_BIRD_RADIUS) {
-          const aboveGap = b.y < p.gapY - FB_PIPE_GAP / 2 + FB_BIRD_RADIUS;
-          const belowGap = b.y > p.gapY + FB_PIPE_GAP / 2 - FB_BIRD_RADIUS;
-          if (aboveGap || belowGap) {
-            kill(b);
-            break;
-          }
+        const halfW = FB_PIPE_WIDTH / 2;
+        const gapTop = p.gapY - FB_PIPE_GAP / 2;
+        const gapBottom = p.gapY + FB_PIPE_GAP / 2;
+        // Top pipe occupies y ∈ (-∞, gapTop]; bottom pipe y ∈ [gapBottom, ∞).
+        const cx = clampNum(FB_BIRD_X, p.x - halfW, p.x + halfW);
+        const dxTop = FB_BIRD_X - cx;
+        const dyTop = b.y - Math.min(b.y, gapTop);
+        const dyBottom = Math.max(b.y, gapBottom) - b.y;
+        const r2 = FB_BIRD_RADIUS * FB_BIRD_RADIUS;
+        const hitsTop = dxTop * dxTop + dyTop * dyTop < r2 && b.y - FB_BIRD_RADIUS < gapTop;
+        const hitsBottom = dxTop * dxTop + dyBottom * dyBottom < r2 && b.y + FB_BIRD_RADIUS > gapBottom;
+        if (hitsTop || hitsBottom) {
+          kill(b);
+          break;
         }
       }
     }

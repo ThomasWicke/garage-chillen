@@ -24,7 +24,14 @@ const PER_SECOND_DAMPING = 0.55;
 const BULLET_SPEED = 460;
 const BULLET_TTL = 1.4;
 const FIRE_COOLDOWN_MS = 280;
-const HIT_RADIUS = 22;
+/** Keep close to the rendered ship (~15 px half-width) — 22 registered
+ *  visible phantom hits well outside the sprite. */
+const HIT_RADIUS = 16;
+/** Central bullet-absorbing disc ("the rock"). Ships spawn on the same
+ *  column aimed at each other, which made spam-firing from spawn strictly
+ *  better than moving; the rock blocks the direct lane so you have to
+ *  maneuver for an angle. Sized like a ship. Ships fly over it freely. */
+export const AST_ABSORBER_RADIUS = AST_SHIP_RADIUS;
 const RESPAWN_INVULN_MS = 1500;
 const FIRST_TO = 3;
 const AST_MATCH_TIMEOUT_MS = 90_000;
@@ -128,6 +135,11 @@ function createAsteroidsMatch(ctx: MatchContext): MatchSession {
     field: { w: AST_FIELD_W, h: AST_FIELD_H },
     ship: { radius: AST_SHIP_RADIUS },
     bullet: { size: AST_BULLET_SIZE },
+    absorber: {
+      x: AST_FIELD_W / 2,
+      y: AST_FIELD_H / 2,
+      radius: AST_ABSORBER_RADIUS,
+    },
     firstTo: FIRST_TO,
     deadlineAt: ctx.deadlineAt,
     players: {
@@ -193,6 +205,7 @@ function createAsteroidsMatch(ctx: MatchContext): MatchSession {
   }
 
   function updateBullets(dt: number) {
+    const absorbR = AST_ABSORBER_RADIUS + AST_BULLET_SIZE / 2;
     for (let i = state.bullets.length - 1; i >= 0; i--) {
       const b = state.bullets[i];
       b.ttl -= dt;
@@ -202,6 +215,12 @@ function createAsteroidsMatch(ctx: MatchContext): MatchSession {
       }
       b.x = wrap(b.x + b.vx * dt, AST_FIELD_W);
       b.y = wrap(b.y + b.vy * dt, AST_FIELD_H);
+      // Central rock absorbs bullets.
+      const adx = b.x - AST_FIELD_W / 2;
+      const ady = b.y - AST_FIELD_H / 2;
+      if (adx * adx + ady * ady < absorbR * absorbR) {
+        state.bullets.splice(i, 1);
+      }
     }
   }
 
@@ -212,8 +231,12 @@ function createAsteroidsMatch(ctx: MatchContext): MatchSession {
       const targetIsP2 = b.ownerId === p1.playerId;
       const target = targetIsP2 ? state.ships.p2 : state.ships.p1;
       if (target.invulnUntil > now) continue;
-      const dx = target.x - b.x;
-      const dy = target.y - b.y;
+      // Torus-aware distance: a bullet and ship adjacent across the wrap
+      // seam are actually close.
+      let dx = Math.abs(target.x - b.x);
+      let dy = Math.abs(target.y - b.y);
+      dx = Math.min(dx, AST_FIELD_W - dx);
+      dy = Math.min(dy, AST_FIELD_H - dy);
       if (dx * dx + dy * dy < HIT_RADIUS * HIT_RADIUS) {
         if (targetIsP2) state.scores.p1++;
         else state.scores.p2++;
