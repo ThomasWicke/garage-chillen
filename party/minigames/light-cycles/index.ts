@@ -27,7 +27,9 @@ type Cell = { x: number; y: number };
 type Bike = {
   head: Cell;
   dir: Dir;
-  pendingTurn: "left" | "right" | null;
+  /** Queued turns, applied one per grid step (max 2 so a quick tap-tap
+   *  U-turn isn't lost to a single-slot overwrite). */
+  pendingTurns: ("left" | "right")[];
   trail: Cell[];
   alive: boolean;
 };
@@ -62,7 +64,7 @@ function key(c: Cell): string {
 }
 
 function freshBike(x: number, y: number, dir: Dir): Bike {
-  return { head: { x, y }, dir, pendingTurn: null, trail: [{ x, y }], alive: true };
+  return { head: { x, y }, dir, pendingTurns: [], trail: [{ x, y }], alive: true };
 }
 
 function createLightCyclesMatch(ctx: MatchContext): MatchSession {
@@ -114,11 +116,10 @@ function createLightCyclesMatch(ctx: MatchContext): MatchSession {
   function step() {
     if (state.ended) return;
 
-    // Apply pending turns.
+    // Apply one queued turn per step.
     for (const b of [state.p1, state.p2]) {
-      if (b.pendingTurn) {
-        b.dir = turn(b.dir, b.pendingTurn);
-        b.pendingTurn = null;
+      if (b.pendingTurns.length > 0) {
+        b.dir = turn(b.dir, b.pendingTurns.shift()!);
       }
     }
 
@@ -222,8 +223,7 @@ function createLightCyclesMatch(ctx: MatchContext): MatchSession {
             ? state.p2
             : null;
       if (!b || !b.alive) return;
-      // Only the latest pending turn applies (overwrite).
-      b.pendingTurn = side;
+      if (b.pendingTurns.length < 2) b.pendingTurns.push(side);
     },
     onPlayerLeft(playerId) {
       if (state.ended) return;

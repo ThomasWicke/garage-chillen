@@ -120,8 +120,13 @@ function createMemorySequenceMatch(ctx: MatchContext): MatchSession {
       sequenceLength: state.sequence.length,
       // Don't reveal full sequence during "input"; only the cells already shown.
       showIdx: state.showIdx,
+      // null during the inter-flash gap too — without that, repeated cells
+      // (e.g. [2,2]) render as one continuous flash and can't be counted.
       showCell:
-        state.phase === "show" && state.showIdx >= 0 && state.showIdx < state.sequence.length
+        state.phase === "show" &&
+        inFlash &&
+        state.showIdx >= 0 &&
+        state.showIdx < state.sequence.length
           ? state.sequence[state.showIdx]
           : null,
       showStepEndsAt: state.showStepEndsAt,
@@ -136,6 +141,10 @@ function createMemorySequenceMatch(ctx: MatchContext): MatchSession {
   // currently flashing (set by startNextRound); inFlash = true when the cell
   // is lit, false during the gap before the next flash.
   let inFlash = true;
+  /** When set, the match ends at this server time (after the result hold).
+   *  Tick-driven instead of setTimeout so cleanup can't leak a timer and the
+   *  "result" branch can't race it into a spurious extra round. */
+  let endMatchAt: number | null = null;
 
   function startInputPhase(now: number) {
     state.phase = "input";
@@ -226,6 +235,11 @@ function createMemorySequenceMatch(ctx: MatchContext): MatchSession {
         return;
       }
       const now = Date.now();
+      if (endMatchAt !== null) {
+        if (now >= endMatchAt) endByLastAlive();
+        else broadcastState();
+        return;
+      }
       if (state.phase === "show" && now >= state.showStepEndsAt) {
         if (inFlash) {
           // Was flashing → start gap.
@@ -251,12 +265,11 @@ function createMemorySequenceMatch(ctx: MatchContext): MatchSession {
           broadcastState();
           // After eval, if only 1 alive, end match after RESULT_HOLD_MS.
           const aliveCount = [...state.players.values()].filter((p) => !p.eliminated).length;
-          if (state.players.size > 1 && aliveCount <= 1) {
-            setTimeout(() => endByLastAlive(), RESULT_HOLD_MS);
-            return;
-          }
-          if (state.players.size === 1 && aliveCount === 0) {
-            setTimeout(() => endByLastAlive(), RESULT_HOLD_MS);
+          if (
+            (state.players.size > 1 && aliveCount <= 1) ||
+            (state.players.size === 1 && aliveCount === 0)
+          ) {
+            endMatchAt = now + RESULT_HOLD_MS;
             return;
           }
         } else {

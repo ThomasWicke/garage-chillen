@@ -151,10 +151,17 @@ function createAirHockeyMatchClient(
       myPaddleX = fieldW / 2;
       myPaddleY = role === "p1" ? fieldH * 0.2 : fieldH * 0.8;
 
+      const clamp = (v: number, lo: number, hi: number) =>
+        Math.max(lo, Math.min(hi, v));
       const onMove = (pos: { x: number; y: number }) => {
-        // pos is in display coords; convert to canonical.
-        const canonicalX = pos.x;
-        const canonicalY = role === "p1" ? fieldH - pos.y : pos.y;
+        // pos is in display coords; convert to canonical, clamped to own
+        // half (mirrors the server clamp so the local echo stays legal).
+        const canonicalX = clamp(pos.x, paddleR, fieldW - paddleR);
+        const rawY = role === "p1" ? fieldH - pos.y : pos.y;
+        const canonicalY =
+          role === "p1"
+            ? clamp(rawY, paddleR, fieldH / 2 - paddleR)
+            : clamp(rawY, fieldH / 2 + paddleR, fieldH - paddleR);
         myPaddleX = canonicalX;
         myPaddleY = canonicalY;
       };
@@ -180,10 +187,23 @@ function createAirHockeyMatchClient(
 
   function applyState(msg: StateMsg) {
     if (!p1Paddle || !p2Paddle || !puck) return;
-    p1Paddle.pos.x = msg.paddles.p1.x;
-    p1Paddle.pos.y = flipY(msg.paddles.p1.y);
-    p2Paddle.pos.x = msg.paddles.p2.x;
-    p2Paddle.pos.y = flipY(msg.paddles.p2.y);
+    // Own paddle renders from the LOCAL position (like pong) — using the
+    // server echo makes it trail the finger by a full round trip, which is
+    // fatal for intercepting a fast puck on a real phone connection.
+    if (role === "p1") {
+      p1Paddle.pos.x = myPaddleX;
+      p1Paddle.pos.y = flipY(myPaddleY);
+    } else {
+      p1Paddle.pos.x = msg.paddles.p1.x;
+      p1Paddle.pos.y = flipY(msg.paddles.p1.y);
+    }
+    if (role === "p2") {
+      p2Paddle.pos.x = myPaddleX;
+      p2Paddle.pos.y = flipY(myPaddleY);
+    } else {
+      p2Paddle.pos.x = msg.paddles.p2.x;
+      p2Paddle.pos.y = flipY(msg.paddles.p2.y);
+    }
     puck.pos.x = msg.puck.x;
     puck.pos.y = flipY(msg.puck.y);
 

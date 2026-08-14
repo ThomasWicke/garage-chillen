@@ -128,9 +128,9 @@ function createSnakeDuelMatchClient(
       ]);
     }
 
-    // Pre-allocate enough cells: snakes can grow to ~rows*cols, but in
-    // practice ~150 is plenty. Round up to be safe.
-    const POOL_SIZE = Math.min(cols * rows, 300);
+    // Pre-allocate one sprite per grid cell — running out silently drops
+    // the newest cells (invisible snake segments) in long matches.
+    const POOL_SIZE = cols * rows;
     for (let i = 0; i < POOL_SIZE; i++) {
       const s = k.add([
         k.rect(cellW - 2, cellH - 2),
@@ -152,29 +152,36 @@ function createSnakeDuelMatchClient(
 
     // Swipe handling.
     if (!ctx.isSpectator) {
+      const kk = k;
+      const sendDisplayDir = (displayDir: Dir) => {
+        // Convert display direction back to canonical (server frame).
+        ctx.send({ type: "set-direction", dir: flipDir(displayDir) });
+      };
       let touchStart: { x: number; y: number; t: number } | null = null;
-      k.onTouchStart((pos) => {
+      const beginSwipe = (pos: { x: number; y: number }) => {
         touchStart = { x: pos.x, y: pos.y, t: Date.now() };
-      });
-      k.onTouchEnd((pos) => {
+      };
+      const endSwipe = (pos: { x: number; y: number }) => {
         if (!touchStart) return;
         const dx = pos.x - touchStart.x;
         const dy = pos.y - touchStart.y;
-        if (Math.hypot(dx, dy) < SWIPE_THRESHOLD) {
-          touchStart = null;
-          return;
-        }
+        touchStart = null;
+        if (Math.hypot(dx, dy) < SWIPE_THRESHOLD) return;
         let displayDir: Dir;
         if (Math.abs(dx) > Math.abs(dy)) displayDir = dx > 0 ? "right" : "left";
         else displayDir = dy > 0 ? "down" : "up";
-        // Convert display direction back to canonical (server frame).
-        const canonical = flipDir(displayDir);
-        ctx.send({ type: "set-direction", dir: canonical });
-        touchStart = null;
-      });
-      k.onMousePress(() => {
-        // Desktop: noop — swipe via touch only.
-      });
+        sendDisplayDir(displayDir);
+      };
+      kk.onTouchStart(beginSwipe);
+      kk.onTouchEnd(endSwipe);
+      // Desktop fallback: mouse-drag swipes + arrow keys (previously a noop,
+      // leaving desktop participants with no controls at all).
+      kk.onMousePress(() => beginSwipe(kk.mousePos()));
+      kk.onMouseRelease(() => endSwipe(kk.mousePos()));
+      kk.onKeyPress("up", () => sendDisplayDir("up"));
+      kk.onKeyPress("down", () => sendDisplayDir("down"));
+      kk.onKeyPress("left", () => sendDisplayDir("left"));
+      kk.onKeyPress("right", () => sendDisplayDir("right"));
     }
   }
 
@@ -256,7 +263,12 @@ function createSnakeDuelMatchClient(
       }
     }
 
-    ctx.setMatchScore(`${msg.snakes.p1.cells.length} – ${msg.snakes.p2.cells.length}`);
+    // Participants read "you – them"; spectators get canonical p1 – p2.
+    const p1Len = msg.snakes.p1.cells.length;
+    const p2Len = msg.snakes.p2.cells.length;
+    ctx.setMatchScore(
+      role === "p2" ? `${p2Len} – ${p1Len}` : `${p1Len} – ${p2Len}`,
+    );
   }
 
   function applyWelcome(msg: WelcomeMsg) {

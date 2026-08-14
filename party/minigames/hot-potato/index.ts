@@ -99,7 +99,10 @@ function createHotPotatoMatch(ctx: MatchContext): MatchSession {
 
   function startNextHolder() {
     state.holderId = pickRandom([...state.alivePlayers]);
-    state.timerExpiresAt = Date.now() + randomTimerMs();
+    // Anchor to startAt: if the holder changes during warm-up (disconnect),
+    // the hidden timer must not burn through the frozen 3s — the replacement
+    // could otherwise be eliminated ~1s after GO.
+    state.timerExpiresAt = Math.max(Date.now(), ctx.startAt) + randomTimerMs();
     state.phase = "live";
   }
 

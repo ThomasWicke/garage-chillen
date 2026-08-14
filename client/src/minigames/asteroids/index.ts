@@ -1,5 +1,5 @@
-// Asteroids 1v1 match client. Renders the canonical server state in a Kaplay
-// scene (no per-role view flip — Asteroids is omnidirectional). Each ship
+// Asteroids 1v1 match client. Renders the server state in a Kaplay scene,
+// 180°-flipped for one role so each player starts at the bottom. Each ship
 // uses the player's avatar sprite, with a thrust flame and a small nose
 // triangle to make heading readable.
 //

@@ -90,6 +90,32 @@ function createWhackAMoleMatchClient(
         ]);
       }
     }
+
+    // Taps via kaplay so letterbox scaling is accounted for (manual
+    // getBoundingClientRect math maps the full stage rect onto the field
+    // and is systematically off whenever the stage aspect ≠ field aspect —
+    // edge/bottom moles became untappable on most phones).
+    if (!ctx.isSpectator) {
+      const kk = k;
+      let lastWhackAt = 0;
+      const whackAt = (pos: { x: number; y: number }) => {
+        const now = Date.now();
+        if (now - lastWhackAt < 50) return;
+        lastWhackAt = now;
+        let best: { id: number; dist: number } | null = null;
+        for (const [id, sprite] of moleSprites) {
+          const dx = pos.x - sprite.pos.x;
+          const dy = pos.y - sprite.pos.y;
+          const dist = Math.hypot(dx, dy);
+          if (dist < Math.min(cellW, cellH) * 0.38 && (!best || dist < best.dist)) {
+            best = { id, dist };
+          }
+        }
+        if (best) ctx.send({ type: "whack", moleId: best.id });
+      };
+      kk.onTouchStart((pos) => whackAt(pos));
+      kk.onMousePress(() => whackAt(kk.mousePos()));
+    }
   }
 
   function spawnMoleSprite(id: number, col: number, row: number) {
@@ -140,48 +166,6 @@ function createWhackAMoleMatchClient(
     statusEl.textContent = "tap moles to score";
     buildScene(msg);
   }
-
-  // Tap handler — translate to mole hit by checking which cell.
-  let lastWhackAt = 0;
-  const tap = (e: Event) => {
-    if (ctx.isSpectator) return;
-    e.preventDefault();
-    const now = Date.now();
-    if (now - lastWhackAt < 50) return;
-    lastWhackAt = now;
-    if (!k) return;
-    const pos = (e as TouchEvent).touches?.[0]
-      ? (() => {
-          const t = (e as TouchEvent).touches[0];
-          const rect = stageEl.getBoundingClientRect();
-          // Map screen coords to canvas coords (account for letterbox).
-          const sx = (t.clientX - rect.left) / rect.width;
-          const sy = (t.clientY - rect.top) / rect.height;
-          return { x: sx * fieldW, y: sy * fieldH };
-        })()
-      : (() => {
-          const m = (e as MouseEvent);
-          const rect = stageEl.getBoundingClientRect();
-          const sx = (m.clientX - rect.left) / rect.width;
-          const sy = (m.clientY - rect.top) / rect.height;
-          return { x: sx * fieldW, y: sy * fieldH };
-        })();
-    // Find the mole under the tap point (closest within radius).
-    let best: { id: number; dist: number } | null = null;
-    for (const [id, sprite] of moleSprites) {
-      const dx = pos.x - sprite.pos.x;
-      const dy = pos.y - sprite.pos.y;
-      const dist = Math.hypot(dx, dy);
-      if (dist < Math.min(cellW, cellH) * 0.38 && (!best || dist < best.dist)) {
-        best = { id, dist };
-      }
-    }
-    if (best) {
-      ctx.send({ type: "whack", moleId: best.id });
-    }
-  };
-  stageEl.addEventListener("touchstart", tap, { passive: false });
-  stageEl.addEventListener("mousedown", tap);
 
   return {
     onMessage(msg) {

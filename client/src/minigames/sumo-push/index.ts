@@ -1,6 +1,6 @@
 // Sumo Push client. Renders a circular arena with two avatar-bound
 // wrestlers. Drag from your wrestler in a direction; release to lunge with
-// strength proportional to drag distance. p2 view is flipped vertically so
+// strength proportional to drag distance. p1 view is flipped vertically so
 // each player's own avatar sits at the bottom of their phone.
 
 import kaplay from "kaplay";
@@ -72,9 +72,11 @@ function createSumoPushMatchClient(
   let p1Info: WelcomeMsg["players"]["p1"] | null = null;
   let p2Info: WelcomeMsg["players"]["p2"] | null = null;
 
-  // p2's view is flipped vertically so own avatar sits at bottom.
+  // Server spawns p1 at the top of the canonical field, p2 at the bottom.
+  // Flip p1's view so each player's own avatar sits at the bottom of their
+  // phone (matches the controls hint).
   function flipY(y: number): number {
-    return role === "p2" ? fieldH - y : y;
+    return role === "p1" ? fieldH - y : y;
   }
 
   function buildScene(welcome: WelcomeMsg) {
@@ -138,32 +140,35 @@ function createSumoPushMatchClient(
     });
 
     if (!ctx.isSpectator && (role === "p1" || role === "p2")) {
-      let touchStart: { x: number; y: number } | null = null;
-      kk.onTouchStart((pos) => {
-        touchStart = { x: pos.x, y: pos.y };
-      });
-      kk.onTouchMove((pos) => {
-        if (!touchStart || !arrowDot) return;
+      let dragStart: { x: number; y: number } | null = null;
+      const beginDrag = (pos: { x: number; y: number }) => {
+        dragStart = { x: pos.x, y: pos.y };
+      };
+      const moveDrag = (pos: { x: number; y: number }) => {
+        if (!dragStart || !arrowDot) return;
         // Show preview of lunge direction (display space).
         arrowDot.pos.x = pos.x;
         arrowDot.pos.y = pos.y;
-      });
-      kk.onTouchEnd((pos) => {
-        if (!touchStart) return;
-        const dxDisplay = pos.x - touchStart.x;
-        const dyDisplay = pos.y - touchStart.y;
-        if (Math.hypot(dxDisplay, dyDisplay) < 12) {
-          touchStart = null;
-          if (arrowDot) arrowDot.pos.x = arrowDot.pos.y = -99;
-          return;
-        }
+      };
+      const endDrag = (pos: { x: number; y: number }) => {
+        if (!dragStart) return;
+        const dxDisplay = pos.x - dragStart.x;
+        const dyDisplay = pos.y - dragStart.y;
+        dragStart = null;
+        if (arrowDot) arrowDot.pos.x = arrowDot.pos.y = -99;
+        if (Math.hypot(dxDisplay, dyDisplay) < 12) return;
         // Convert from display space (possibly flipped) to canonical.
-        const dy = role === "p2" ? -dyDisplay : dyDisplay;
+        const dy = role === "p1" ? -dyDisplay : dyDisplay;
         const dx = dxDisplay;
         ctx.send({ type: "lunge", dx, dy });
-        touchStart = null;
-        if (arrowDot) arrowDot.pos.x = arrowDot.pos.y = -99;
-      });
+      };
+      kk.onTouchStart(beginDrag);
+      kk.onTouchMove(moveDrag);
+      kk.onTouchEnd(endDrag);
+      // Desktop fallback (touchToMouse is off, so no double-fire on phones).
+      kk.onMousePress(() => beginDrag(kk.mousePos()));
+      kk.onMouseMove(() => moveDrag(kk.mousePos()));
+      kk.onMouseRelease(() => endDrag(kk.mousePos()));
     }
   }
 

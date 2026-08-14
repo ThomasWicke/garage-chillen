@@ -273,8 +273,12 @@ export default class LobbyServer implements Party.Server {
       type: "session-state",
       scores: this.sessionScores,
     });
-    this.sendCurrentLobbyState(sender);
+    // Player list BEFORE lobby state: on a "playing" state the client
+    // immediately mounts the gamemode scene from its current player list —
+    // if that list is still empty (mid-round refresh / late join), every
+    // bracket slot renders "?" and match clients get zero participants.
     this.broadcastPlayerList();
+    this.sendCurrentLobbyState(sender);
 
     // Mid-round (re)connect: the client just mounted (or will mount) the
     // gamemode scene from the lobby state above, but match welcomes and the
@@ -482,6 +486,13 @@ export default class LobbyServer implements Party.Server {
     this.lastResult = fullResult;
     this.active = null;
     this.state = "round-results";
+    // Set dismissAt BEFORE the first broadcast — otherwise clients briefly
+    // render a countdown from the previous round's stale timestamp.
+    if (this.resultsAutoDismissTimer) clearTimeout(this.resultsAutoDismissTimer);
+    const dismissMs = this.sequence
+      ? ROUND_RESULTS_AUTO_DISMISS_SHUFFLE_MS
+      : ROUND_RESULTS_AUTO_DISMISS_MS;
+    this.resultsDismissAt = Date.now() + dismissMs;
     this.broadcastLobbyState();
     const sessionMsg: SessionStateMsg = {
       scope: "lobby",
@@ -489,15 +500,6 @@ export default class LobbyServer implements Party.Server {
       scores: this.sessionScores,
     };
     this.room.broadcast(JSON.stringify(sessionMsg));
-
-    if (this.resultsAutoDismissTimer) clearTimeout(this.resultsAutoDismissTimer);
-    const dismissMs = this.sequence
-      ? ROUND_RESULTS_AUTO_DISMISS_SHUFFLE_MS
-      : ROUND_RESULTS_AUTO_DISMISS_MS;
-    this.resultsDismissAt = Date.now() + dismissMs;
-    // Re-broadcast lobby state now that dismissAt is known (the broadcast
-    // before this point ran without it because we set the timestamp here).
-    this.broadcastLobbyState();
     this.resultsAutoDismissTimer = setTimeout(
       () => this.transitionToIdle(),
       dismissMs,
@@ -552,6 +554,16 @@ export default class LobbyServer implements Party.Server {
       for (let i = 0; i < w; i++) pool.push(m.id);
     }
     shuffleInPlace(pool);
+
+    // Fresh run = fresh standings. Without this the finale podium
+    // accumulates every previous run's points forever.
+    this.sessionScores = {};
+    const resetMsg: SessionStateMsg = {
+      scope: "lobby",
+      type: "session-state",
+      scores: this.sessionScores,
+    };
+    this.room.broadcast(JSON.stringify(resetMsg));
 
     this.sequence = {
       plan: pool,

@@ -508,6 +508,10 @@ export function renderLobby(rawCode: string): () => void {
 
   return () => {
     clearInterval(interval);
+    if (state.editErrorTimer) {
+      clearTimeout(state.editErrorTimer);
+      state.editErrorTimer = null;
+    }
     if (drawerClose) {
       try { drawerClose(); } catch {}
       drawerClose = null;

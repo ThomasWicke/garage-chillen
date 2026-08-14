@@ -188,6 +188,9 @@ function createColorTapMatch(ctx: MatchContext): MatchSession {
     });
   }
 
+  /** When set, the match ends at this server time (after the result hold). */
+  let endMatchAt: number | null = null;
+
   return {
     tick() {
       if (state.ended) return;
@@ -201,17 +204,23 @@ function createColorTapMatch(ctx: MatchContext): MatchSession {
         return;
       }
       const now = Date.now();
+      if (endMatchAt !== null) {
+        if (now >= endMatchAt) endByLastStanding();
+        else broadcastState();
+        return;
+      }
       if (state.phase === "signal" && now >= state.signalEndsAt) {
         evaluateRound();
         broadcastState();
         const aliveCount = [...state.players.values()].filter((p) => !p.eliminated).length;
-        if (state.players.size > 1 && aliveCount <= 1) {
-          // Wait through result then end.
-          setTimeout(() => endByLastStanding(), RESULT_PHASE_MS);
-          return;
-        }
-        if (state.players.size === 1 && aliveCount === 0) {
-          setTimeout(() => endByLastStanding(), RESULT_PHASE_MS);
+        if (
+          (state.players.size > 1 && aliveCount <= 1) ||
+          (state.players.size === 1 && aliveCount === 0)
+        ) {
+          // Wait through result then end. Tick-driven (no setTimeout) so
+          // cleanup can't leak a timer and the "result" branch can't race
+          // it into starting a spurious extra round.
+          endMatchAt = now + RESULT_PHASE_MS;
           return;
         }
       } else if (state.phase === "result" && now >= state.resultEndsAt) {

@@ -131,7 +131,11 @@ function createTronArenaMatchClient(
       k.add([k.rect(fieldW, 1), k.pos(0, j * cellH), k.color(22, 22, 36)]);
     }
 
-    const POOL = Math.min(cols * rows, 700);
+    // Pool must cover every grid cell: trails (including faded dead ones)
+    // only grow, and running out of pool sprites silently drops the newest
+    // cells — the self trail renders last, so the player's own freshest
+    // walls would go invisible first.
+    const POOL = cols * rows;
     for (let i = 0; i < POOL; i++) {
       const s = k.add([
         k.rect(cellW - 1, cellH - 1),

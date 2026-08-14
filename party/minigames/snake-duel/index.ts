@@ -28,7 +28,10 @@ type Cell = { x: number; y: number };
 type Snake = {
   cells: Cell[]; // cells[0] = head
   dir: Dir;
-  pendingDir: Dir | null;
+  /** Queued direction inputs (max 2). A single slot loses the first of two
+   *  quick swipes — e.g. left-then-down while moving up ends with BOTH
+   *  dropped (down overwrites left, then is rejected as a reversal). */
+  pendingDirs: Dir[];
   alive: boolean;
 };
 
@@ -65,7 +68,7 @@ function freshSnake(headX: number, headY: number, dir: Dir): Snake {
   for (let i = 0; i < INITIAL_SNAKE_LEN; i++) {
     cells.push({ x: headX - v.x * i, y: headY - v.y * i });
   }
-  return { cells, dir, pendingDir: null, alive: true };
+  return { cells, dir, pendingDirs: [], alive: true };
 }
 
 function createSnakeDuelMatch(ctx: MatchContext): MatchSession {
@@ -141,12 +144,16 @@ function createSnakeDuelMatch(ctx: MatchContext): MatchSession {
   function step() {
     if (state.ended) return;
 
-    // Apply pending direction changes (rejected if reversing on neck).
+    // Apply the first queued direction that isn't a reversal (one turn per
+    // step; rejected reversals are dropped so a queued follow-up still lands).
     for (const s of [state.p1, state.p2]) {
-      if (s.pendingDir && !isOpposite(s.pendingDir, s.dir)) {
-        s.dir = s.pendingDir;
+      while (s.pendingDirs.length > 0) {
+        const d = s.pendingDirs.shift()!;
+        if (!isOpposite(d, s.dir)) {
+          s.dir = d;
+          break;
+        }
       }
-      s.pendingDir = null;
     }
 
     const headA = nextHead(state.p1);
@@ -172,6 +179,17 @@ function createSnakeDuelMatch(ctx: MatchContext): MatchSession {
     if (aDies || bDies) {
       state.p1.alive = !aDies;
       state.p2.alive = !bDies;
+      // Advance survivors so the final broadcast shows the fatal moment —
+      // otherwise both snakes render one cell short of the collision and
+      // the death looks causeless.
+      if (!aDies) {
+        state.p1.cells.unshift(headA);
+        if (!aAteFood) state.p1.cells.pop();
+      }
+      if (!bDies) {
+        state.p2.cells.unshift(headB);
+        if (!bAteFood) state.p2.cells.pop();
+      }
       endMatch(aDies, bDies);
       return;
     }
@@ -262,7 +280,7 @@ function createSnakeDuelMatch(ctx: MatchContext): MatchSession {
             ? state.p2
             : null;
       if (!s || !s.alive) return;
-      s.pendingDir = dir;
+      if (s.pendingDirs.length < 2) s.pendingDirs.push(dir);
     },
     onPlayerLeft(playerId) {
       if (state.ended) return;

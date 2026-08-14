@@ -88,7 +88,9 @@ function createReactionDuelMatch(ctx: MatchContext): MatchSession {
       currentRound: state.currentRound,
       totalRounds: ROUNDS,
       phase: state.phase,
-      signalAt: state.signalAt,
+      // Never leak the future GO time while armed — a modified client could
+      // schedule a perfectly-timed tap. Clients only need it after the signal.
+      signalAt: state.phase === "armed" ? null : state.signalAt,
       phaseEndsAt: state.phaseEndsAt,
       roundResult: state.roundResult,
       deadlineAt: ctx.deadlineAt,

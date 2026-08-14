@@ -126,12 +126,17 @@ function createSumoPushMatch(ctx: MatchContext): MatchSession {
       const v1n = state.p1.vx * nx + state.p1.vy * ny;
       const v2n = state.p2.vx * nx + state.p2.vy * ny;
       const dv = v2n - v1n;
-      // Add a small extra impulse so collisions feel snappy.
-      const impulse = dv + 30;
-      state.p1.vx += impulse * nx;
-      state.p1.vy += impulse * ny;
-      state.p2.vx -= impulse * nx;
-      state.p2.vy -= impulse * ny;
+      // Only resolve when approaching (dv < 0); a separating pair would
+      // otherwise be pulled back together and stick.
+      if (dv < 0) {
+        // Extra outward impulse so collisions feel snappy: p1 along -n,
+        // p2 along +n.
+        const snap = 30;
+        state.p1.vx += (dv - snap) * nx;
+        state.p1.vy += (dv - snap) * ny;
+        state.p2.vx -= (dv - snap) * nx;
+        state.p2.vy -= (dv - snap) * ny;
+      }
     }
 
     // Ring-out check.
@@ -141,7 +146,17 @@ function createSumoPushMatch(ctx: MatchContext): MatchSession {
       const w = slot === "p1" ? state.p1 : state.p2;
       const r = Math.hypot(w.x - cx, w.y - cy);
       const now = Date.now();
-      if (r > SUMO_ARENA_RADIUS - SUMO_AVATAR_RADIUS / 2 && w.invulnUntil < now) {
+      const ringLimit = SUMO_ARENA_RADIUS - SUMO_AVATAR_RADIUS / 2;
+      if (r > ringLimit && w.invulnUntil >= now) {
+        // Invulnerable wrestlers can't be rung out — hold them at the edge
+        // (otherwise a shove during invuln becomes a delayed ring-out the
+        // moment the timer expires).
+        const scale = ringLimit / r;
+        w.x = cx + (w.x - cx) * scale;
+        w.y = cy + (w.y - cy) * scale;
+        continue;
+      }
+      if (r > ringLimit && w.invulnUntil < now) {
         const winner = slot === "p1" ? "p2" : "p1";
         state.scores[winner]++;
         if (state.scores[winner] >= FIRST_TO) {

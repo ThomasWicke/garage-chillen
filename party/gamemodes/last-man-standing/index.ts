@@ -141,6 +141,11 @@ function createLastManStandingSession(
     phase = "complete";
     phaseEndsAt = null;
 
+    // Broadcast the "complete" lms-state BEFORE match-ended: the client's
+    // match-ended handler unmounts and rerenders, and if it still saw
+    // phase:"playing" it would remount a fresh match scene ("connecting…")
+    // for the moment until the complete state arrived.
+    broadcastState();
     // Tell match clients to unmount their scene.
     ctx.broadcastMatch(
       MATCH_ID,
@@ -151,7 +156,6 @@ function createLastManStandingSession(
         summary: result.summary ?? null,
       },
     );
-    broadcastState();
 
     for (const p of participantsAtStart) {
       ctx.setClickerAvailable(p.playerId, true);
@@ -167,13 +171,15 @@ function createLastManStandingSession(
 
   function fallbackPlacements(winnerId: string | null): Record<string, number> {
     // Used only if the match forgot to provide placements. Winner first,
-    // everyone else tied at last place.
+    // everyone else tied at LAST place. (Careful: a null winner must not
+    // leave everyone at rank 1 — a force-ended round would award 10 points
+    // to the whole lobby.)
     const out: Record<string, number> = {};
-    let rank = 1;
-    if (winnerId) out[winnerId] = rank++;
+    const lastPlace = Math.max(2, participantsAtStart.length);
+    if (winnerId) out[winnerId] = 1;
     for (const p of participantsAtStart) {
       if (p.playerId === winnerId) continue;
-      out[p.playerId] = rank;
+      out[p.playerId] = lastPlace;
     }
     return out;
   }
@@ -207,6 +213,10 @@ function createLastManStandingSession(
     tick: tickFn,
     onMatchMessage(playerId, matchId, msg) {
       if (matchId !== MATCH_ID || matchEnded || !matchSession) return;
+      // Gate to actual participants — mid-match joiners and intro-leavers
+      // must not reach the match (e.g. whack-a-mole scores ANY playerId it
+      // sees, so an ungated outsider could win the round).
+      if (!participantsAtStart.some((p) => p.playerId === playerId)) return;
       matchSession.onMessage(playerId, msg);
     },
     onPlayerLeft(playerId) {

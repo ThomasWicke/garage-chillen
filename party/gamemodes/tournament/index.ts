@@ -258,10 +258,14 @@ function createTournamentSession(ctx: GamemodeContext): GamemodeSession {
     }
     activeMatches.delete(matchId);
 
-    // Pick a winner. If null/draw → arbitrary first participant.
+    // Pick a winner. If null/draw → random pick (a fixed slot would give a
+    // systematic seeding-position bias, and the header promises "random").
     let winner = result.winnerId;
     if (!winner || !am.participantIds.includes(winner)) {
-      winner = am.participantIds[0];
+      winner =
+        am.participantIds[
+          Math.floor(Math.random() * am.participantIds.length)
+        ];
     }
     recordMatchResult(bracket, matchId, winner);
 
@@ -388,6 +392,9 @@ function createTournamentSession(ctx: GamemodeContext): GamemodeSession {
     },
     onPlayerRejoined(playerId) {
       if (ended) return;
+      // Back in the room → future matches must not auto-forfeit them.
+      // (Any match already forfeited while they were gone stays decided.)
+      disconnectedIds.delete(playerId);
       // Re-send the bracket state, then every active match's welcome —
       // the rejoining client mounts its own match if it's a participant,
       // or a spectated one (welcomes are cached client-side per matchId).

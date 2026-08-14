@@ -95,9 +95,11 @@ function freshState(): GameState {
 }
 
 function normalizeAngle(a: number): number {
-  while (a > Math.PI) a -= 2 * Math.PI;
-  while (a < -Math.PI) a += 2 * Math.PI;
-  return a;
+  // Modulo, not a loop: a hostile client can send Infinity/1e300 and a
+  // while-loop would hang the room. Non-finite input falls through to 0.
+  if (!Number.isFinite(a)) return 0;
+  const wrapped = ((a % (2 * Math.PI)) + 3 * Math.PI) % (2 * Math.PI) - Math.PI;
+  return wrapped;
 }
 
 function wrap(v: number, max: number): number {
@@ -303,7 +305,11 @@ function createAsteroidsMatch(ctx: MatchContext): MatchSession {
             : null;
       if (!ship) return;
 
-      if (msg.type === "set-target-angle" && typeof msg.angle === "number") {
+      if (
+        msg.type === "set-target-angle" &&
+        typeof msg.angle === "number" &&
+        Number.isFinite(msg.angle)
+      ) {
         ship.targetAngle = normalizeAngle(msg.angle);
       } else if (msg.type === "set-thrust" && typeof msg.on === "boolean") {
         ship.thrust = msg.on;

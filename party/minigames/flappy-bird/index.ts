@@ -5,7 +5,7 @@
 // pipes. Tap to flap (sets vy = FLAP_VY); gravity does the rest.
 //
 // Death: hit a pipe / floor / ceiling. Last bird alive wins. If the match
-// hits its deadline (5 min), surviving players get coinflip placements
+// hits its deadline (3 min), surviving players get coinflip placements
 // above all dead players (death order: last-to-die ranked highest among
 // the dead).
 
@@ -29,7 +29,7 @@ const MAX_DOWN_VY = 620;
 const PIPE_INTERVAL_X = 280;
 const PIPE_SCROLL_SPEED = 150;
 const INITIAL_PIPE_DELAY_MS = 1500;
-const FB_MATCH_TIMEOUT_MS = 3 * 60 * 1000; // 5 min
+const FB_MATCH_TIMEOUT_MS = 3 * 60 * 1000; // 3 min
 
 type Bird = {
   playerId: string;
@@ -189,8 +189,12 @@ function createFlappyBirdMatch(ctx: MatchContext): MatchSession {
     if (state.ended) return;
     state.ended = true;
     const placements = computePlacements();
-    const winnerId =
-      Object.entries(placements).find(([, p]) => p === 1)?.[0] ?? null;
+    const topIds = Object.entries(placements)
+      .filter(([, p]) => p === 1)
+      .map(([id]) => id);
+    // Shared rank 1 = the last birds died on the same tick — honest tie,
+    // not an arbitrary "X survives".
+    const winnerId = topIds.length === 1 ? topIds[0] : null;
     const winnerNick = winnerId
       ? (players.find((p) => p.playerId === winnerId)?.nickname ?? "?")
       : null;
@@ -198,7 +202,11 @@ function createFlappyBirdMatch(ctx: MatchContext): MatchSession {
     ctx.endMatch({
       winnerId,
       placements,
-      summary: winnerNick ? `${winnerNick} survives` : "everyone died",
+      summary: winnerNick
+        ? `${winnerNick} survives`
+        : topIds.length > 1
+          ? "double KO · tie"
+          : "everyone died",
     });
   }
 
@@ -227,13 +235,22 @@ function createFlappyBirdMatch(ctx: MatchContext): MatchSession {
   function computePlacements(): Record<string, number> {
     const out: Record<string, number> = {};
     const alive = [...state.birds.values()].filter((b) => b.alive);
-    const dead = [...state.birds.values()]
-      .filter((b) => !b.alive)
-      .sort((a, b) => b.diedAt - a.diedAt);
+    const dead = [...state.birds.values()].filter((b) => !b.alive);
     shuffleInPlace(alive);
     let rank = 1;
     for (const b of alive) out[b.playerId] = rank++;
-    for (const b of dead) out[b.playerId] = rank++;
+    // Dead: latest death ranks best; same-tick deaths SHARE a rank instead
+    // of being silently ordered by roster position (which handed rank 1 —
+    // and 10 points — to whoever joined the lobby first on a shared pipe).
+    dead.sort((a, b) => b.diedAt - a.diedAt);
+    let i = 0;
+    while (i < dead.length) {
+      let j = i;
+      while (j < dead.length && dead[j].diedAt === dead[i].diedAt) j++;
+      for (let g = i; g < j; g++) out[dead[g].playerId] = rank;
+      rank += j - i;
+      i = j;
+    }
     return out;
   }
 

@@ -24,6 +24,10 @@ export const PONG_PADDLE_Y_BOTTOM = PONG_FIELD_H - 40;
 
 const INITIAL_BALL_SPEED = 340;
 const SPEED_INCREMENT = 1.05;
+/** Cap below the tunneling threshold: the paddle collision band is ~28 px
+ *  (paddle 14 + ball 14) and physics run at 30 Hz, so past ~840 px/s the
+ *  ball can skip the band in a single tick. */
+const MAX_BALL_SPEED = 720;
 const MAX_DEFLECT = 0.7; // radians, deviation from vertical at paddle edges
 const FIRST_TO = 3;
 const PONG_MATCH_TIMEOUT_MS = 120_000;
@@ -141,7 +145,10 @@ function createPongMatch(ctx: MatchContext): MatchSession {
     const b = state.ball;
     const offset = clamp((b.x - paddleX) / (PONG_PADDLE_W / 2), -1, 1);
     const angle = offset * MAX_DEFLECT;
-    const speed = Math.hypot(b.vx, b.vy) * SPEED_INCREMENT;
+    const speed = Math.min(
+      Math.hypot(b.vx, b.vy) * SPEED_INCREMENT,
+      MAX_BALL_SPEED,
+    );
     b.vx = Math.sin(angle) * speed;
     b.vy = Math.cos(angle) * speed * direction;
     b.y =

@@ -28,10 +28,14 @@ type Bike = {
   playerId: string;
   head: Cell;
   dir: Dir;
-  pendingTurn: "left" | "right" | null;
+  /** Queued turns, applied one per grid step (max 2 so a quick tap-tap
+   *  U-turn isn't lost to the single-slot overwrite). */
+  pendingTurns: ("left" | "right")[];
   trail: Cell[];
   alive: boolean;
   diedAt: number;
+  /** Disconnected mid-match (forfeit). Ranked below natural deaths. */
+  left: boolean;
 };
 
 type GameState = {
@@ -124,10 +128,11 @@ function createTronArenaMatch(ctx: MatchContext): MatchSession {
       playerId: players[i].playerId,
       head: { x: pos.x, y: pos.y },
       dir: pos.dir,
-      pendingTurn: null,
+      pendingTurns: [],
       trail: [{ x: pos.x, y: pos.y }],
       alive: true,
       diedAt: 0,
+      left: false,
     };
     state.bikes.set(players[i].playerId, bike);
     state.occupied.add(key(bike.head));
@@ -168,11 +173,10 @@ function createTronArenaMatch(ctx: MatchContext): MatchSession {
   function step() {
     if (state.ended) return;
 
-    // Apply pending turns.
+    // Apply one queued turn per step.
     for (const b of state.bikes.values()) {
-      if (b.alive && b.pendingTurn) {
-        b.dir = turn(b.dir, b.pendingTurn);
-        b.pendingTurn = null;
+      if (b.alive && b.pendingTurns.length > 0) {
+        b.dir = turn(b.dir, b.pendingTurns.shift()!);
       }
     }
 
@@ -243,7 +247,13 @@ function createTronArenaMatch(ctx: MatchContext): MatchSession {
     const alive = [...state.bikes.values()].filter((b) => b.alive);
     const dead = [...state.bikes.values()]
       .filter((b) => !b.alive)
-      .sort((a, b) => b.diedAt - a.diedAt);
+      .sort((a, b) => {
+        // Forfeits rank below every natural death — otherwise the last
+        // survivor disconnecting "wins" (their departure is the most recent
+        // diedAt when everyone else already crashed).
+        if (a.left !== b.left) return a.left ? 1 : -1;
+        return b.diedAt - a.diedAt;
+      });
     shuffleInPlace(alive);
     let rank = 1;
     for (const b of alive) out[b.playerId] = rank++;
@@ -311,13 +321,14 @@ function createTronArenaMatch(ctx: MatchContext): MatchSession {
       if (side !== "left" && side !== "right") return;
       const b = state.bikes.get(playerId);
       if (!b || !b.alive) return;
-      b.pendingTurn = side;
+      if (b.pendingTurns.length < 2) b.pendingTurns.push(side);
     },
     onPlayerLeft(playerId) {
       const b = state.bikes.get(playerId);
       if (b && b.alive) {
         b.alive = false;
         b.diedAt = Date.now();
+        b.left = true;
       }
     },
     cleanup() {},

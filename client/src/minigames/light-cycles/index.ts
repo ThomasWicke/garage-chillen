@@ -105,8 +105,9 @@ function createLightCyclesMatchClient(
       k.add([k.rect(fieldW, 1), k.pos(0, j * cellH), k.color(22, 22, 36)]);
     }
 
-    // Pool — long matches can fill many cells. Cap at half the grid.
-    const POOL = Math.min(cols * rows, 600);
+    // Pool — must cover every grid cell: trails only grow, and running out
+    // of pool sprites silently drops the newest cells (invisible walls).
+    const POOL = cols * rows;
     for (let i = 0; i < POOL; i++) {
       const s = k.add([
         k.rect(cellW - 1, cellH - 1),
@@ -127,30 +128,19 @@ function createLightCyclesMatchClient(
     }
 
     if (!ctx.isSpectator) {
-      // Tap left half = turn left, right half = turn right. The "left/right"
-      // is in DISPLAY space — we need to convert to canonical for p1
-      // (whose view is 180° flipped).
+      // Tap left half = turn left, right half = turn right. Turns are
+      // RELATIVE to the bike's heading, and a 180° view rotation preserves
+      // handedness (clockwise stays clockwise) — so display left/right IS
+      // canonical left/right for both roles. No swap.
       k.onTouchStart((pos) => {
-        const displaySide: "left" | "right" = pos.x < fieldW / 2 ? "left" : "right";
-        const canonicalSide =
-          role === "p1"
-            ? displaySide === "left"
-              ? "right"
-              : "left"
-            : displaySide;
-        ctx.send({ type: "turn", side: canonicalSide });
+        const side: "left" | "right" = pos.x < fieldW / 2 ? "left" : "right";
+        ctx.send({ type: "turn", side });
       });
       k.onMousePress(() => {
         if (!k) return;
         const m = k.mousePos();
-        const displaySide: "left" | "right" = m.x < fieldW / 2 ? "left" : "right";
-        const canonicalSide =
-          role === "p1"
-            ? displaySide === "left"
-              ? "right"
-              : "left"
-            : displaySide;
-        ctx.send({ type: "turn", side: canonicalSide });
+        const side: "left" | "right" = m.x < fieldW / 2 ? "left" : "right";
+        ctx.send({ type: "turn", side });
       });
     }
   }
