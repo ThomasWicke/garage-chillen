@@ -5,7 +5,11 @@
 // round points). Pops get a big 💥 animation; round results overlay each
 // player's +N / POP for 3s between rounds.
 
+import { kaboomData } from "@kaplayjs/crew";
 import { avatarSrc } from "../../identity";
+
+// Crew "kaboom" cloud for the pop burst — keeps the art in the kaplay family.
+const KABOOM_SRC = kaboomData.kind === "Sprite" ? kaboomData.outlined : "";
 import { formatRemaining, statusLine } from "../clock";
 import { registerMiniGameClient } from "../registry";
 import type {
@@ -81,8 +85,9 @@ function createBalloonPumpMatchClient(
         .bp-own.popped .bp-balloon { display: none; }
         .bp-own-boom {
           position: absolute; inset: 0; display: none;
-          align-items: center; justify-content: center; font-size: 96px;
+          align-items: center; justify-content: center;
         }
+        .bp-own-boom img { width: 110px; height: 110px; image-rendering: pixelated; }
         .bp-own.popped .bp-own-boom { display: flex; animation: bp-pop 0.5s ease-out; }
         @keyframes bp-pop {
           0% { transform: scale(0.2); opacity: 0.4; }
@@ -118,8 +123,9 @@ function createBalloonPumpMatchClient(
         .bp-cell.left { opacity: 0.35; }
         .bp-mini-boom {
           position: absolute; inset: 0; display: none;
-          align-items: center; justify-content: center; font-size: 28px;
+          align-items: center; justify-content: center;
         }
+        .bp-mini-boom img { width: 32px; height: 32px; image-rendering: pixelated; }
         .bp-cell.popped .bp-mini-boom { display: flex; animation: bp-pop 0.5s ease-out; }
         .bp-cnick {
           font-size: 10px; color: #9a9aa5; max-width: 100%;
@@ -148,7 +154,7 @@ function createBalloonPumpMatchClient(
       <div class="bp-own" id="bp-own">
         <div class="bp-own-wrap">
           <div class="bp-balloon" id="bp-balloon">0</div>
-          <div class="bp-own-boom">💥</div>
+          <div class="bp-own-boom"><img src="${KABOOM_SRC}" alt="" /></div>
         </div>
         <div class="bp-own-label" id="bp-own-label"></div>
       </div>
@@ -205,7 +211,7 @@ function createBalloonPumpMatchClient(
         (p) => `<div class="bp-cell${p.playerId === ctx.selfPlayerId ? " self" : ""}" data-pid="${escapeHtml(p.playerId)}">
           <div class="bp-mini">
             <div class="bp-mini-balloon" style="width:16px;height:16px"></div>
-            <div class="bp-mini-boom">💥</div>
+            <div class="bp-mini-boom"><img src="${KABOOM_SRC}" alt="" /></div>
           </div>
           <img src="${avatarSrc(p.avatarId)}" alt="" />
           <div class="bp-cnick">${escapeHtml(p.nickname)}</div>

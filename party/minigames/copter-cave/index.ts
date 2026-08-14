@@ -19,13 +19,17 @@ export const CC_COPTER_X = 140;
 export const CC_COPTER_RADIUS = 14;
 export const CC_SEG_W = 60;
 
-const HOLD_ACCEL = 900; // px/s² upward while held
-const GRAVITY = 900; // px/s² downward while released
-const MAX_VY = 420; // |vy| clamp
-const SCROLL_SPEED = 160; // px/s right→left
-const GAP_START = 320;
-const GAP_SHRINK_PER_SEG = 4;
-const GAP_MIN = 190;
+// Asymmetric physics: strong rise, gentle fall. Hover needs only ~35% hold
+// duty cycle, so both hold-players and flappy-style tappers can survive.
+// (The original 900/900/420 hit terminal fall speed in 0.5s and killed
+// players before they understood the controls.)
+const HOLD_ACCEL = 1000; // px/s² upward while held
+const GRAVITY = 550; // px/s² downward while released
+const MAX_VY = 300; // |vy| clamp
+const SCROLL_SPEED = 150; // px/s right→left
+const GAP_START = 360;
+const GAP_SHRINK_PER_SEG = 3;
+const GAP_MIN = 220;
 const GAP_STEP_MAX = 40; // max random-walk step of gapY per segment
 const GAP_EDGE_MARGIN = 30; // keep the gap fully inside the field
 const CC_MATCH_TIMEOUT_MS = 120_000;
@@ -334,9 +338,10 @@ function createCopterCaveMatch(ctx: MatchContext): MatchSession {
         return;
       }
       if (Date.now() < ctx.startAt) {
-        // Warm-up: clients render the frozen scene; nothing advances and
-        // any stray hold state is cleared so nobody launches pre-armed.
-        state.holds.clear();
+        // Warm-up: clients render the frozen scene; nothing advances.
+        // Holds ARE accepted during warm-up (see onMessage) — a finger
+        // already pressed at GO must count from the first live tick, so
+        // don't clear the map here.
         broadcastState();
         return;
       }
@@ -346,7 +351,9 @@ function createCopterCaveMatch(ctx: MatchContext): MatchSession {
     },
     onMessage(playerId, msg) {
       if (state.ended) return;
-      if (Date.now() < ctx.startAt) return; // warm-up: ignore inputs
+      // NOTE: hold state is deliberately accepted during warm-up — it's
+      // intent, not progress (the sim is frozen). Rejecting it made a
+      // finger held through the 3-2-1 countdown free-fall at GO.
       if (msg.type !== "hold") return;
       if (typeof msg.on !== "boolean") return;
       const c = state.copters.get(playerId);

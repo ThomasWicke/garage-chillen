@@ -1,12 +1,22 @@
-// Fruit Frenzy client. DOM arena: absolutely-positioned emoji spans moved
-// via style.transform on every state broadcast. Tap a fruit to claim it
-// first (+1); tap a bomb and you eat -3 plus a 1.5s stun (arena edges glow
-// red while stunned). Live scoreboard of all players at the top.
+// Fruit Frenzy client. DOM arena: absolutely-positioned crew-sprite images
+// moved via style.transform on every state broadcast. Tap a fruit to claim
+// it first (+1); tap a bomb (skull) and you eat -3 plus a 1.5s stun (arena
+// edges glow red while stunned). Live scoreboard of all players at the top.
 //
-// Pop cues come from the server's `events` array in each state message
-// (slice/boom happenings since the previous tick) — see the server module
-// header for the wire protocol.
+// Pop cues come from the server's `events` array in each state message.
+// Fruits YOU claimed fly off to the LEFT; fruits claimed by anyone else fly
+// off to the RIGHT — that's how you read at a glance which ones you got.
 
+import {
+  appleData,
+  grapeData,
+  kaboomData,
+  mushroomData,
+  pineappleData,
+  skullerData,
+  watermelonData,
+  type CrewAsset,
+} from "@kaplayjs/crew";
 import { avatarSrc } from "../../identity";
 import { formatRemaining, statusLine } from "../clock";
 import { registerMiniGameClient } from "../registry";
@@ -29,7 +39,8 @@ type WelcomeMsg = {
 type WireEntity = {
   id: number;
   kind: "fruit" | "bomb";
-  emoji: string;
+  /** Crew sprite key (e.g. "apple", "skuller"). */
+  sprite: string;
   x: number;
   y: number;
 };
@@ -40,8 +51,25 @@ type SliceEvent = {
   by: string;
   x: number;
   y: number;
-  emoji: string;
+  sprite: string;
 };
+
+// Crew sprite key → data URI. Falls back to the skull for unknown keys.
+function crewSrc(data: CrewAsset): string {
+  return data.kind === "Sprite" ? data.outlined : "";
+}
+const SPRITE_SRC: Record<string, string> = {
+  watermelon: crewSrc(watermelonData),
+  apple: crewSrc(appleData),
+  pineapple: crewSrc(pineappleData),
+  grape: crewSrc(grapeData),
+  mushroom: crewSrc(mushroomData),
+  skuller: crewSrc(skullerData),
+  kaboom: crewSrc(kaboomData),
+};
+function spriteSrc(key: string): string {
+  return SPRITE_SRC[key] ?? SPRITE_SRC.skuller;
+}
 
 type StateMsg = {
   type: "state";
@@ -82,14 +110,29 @@ function createFruitFrenzyMatchClient(
                   border-radius: 10px; overflow: hidden;
                   touch-action: none; user-select: none; -webkit-user-select: none; }
       .ff-stage.ff-stunned { box-shadow: inset 0 0 42px 14px rgba(255, 45, 45, 0.6); }
-      .ff-ent { position: absolute; left: 0; top: 0; font-size: 44px;
-                line-height: 1; cursor: pointer; will-change: transform;
+      .ff-ent { position: absolute; left: 0; top: 0;
+                cursor: pointer; will-change: transform;
                 pointer-events: auto; padding: 8px; margin: -8px; /* ≥48px tap target */ }
-      .ff-pop { position: absolute; left: 0; top: 0; font-size: 44px; line-height: 1;
-                pointer-events: none; animation: ff-pop-anim 0.35s ease-out forwards; }
-      @keyframes ff-pop-anim {
-        0%   { opacity: 1; scale: 1; }
-        100% { opacity: 0; scale: 2; }
+      .ff-ent img { width: 48px; height: 48px; display: block;
+                    image-rendering: pixelated; pointer-events: none; }
+      .ff-pop { position: absolute; left: 0; top: 0; pointer-events: none; }
+      .ff-pop img { width: 48px; height: 48px; display: block;
+                    image-rendering: pixelated; }
+      /* Claimed-fruit fly-off: yours go LEFT, everyone else's go RIGHT. */
+      .ff-pop.mine img { animation: ff-fly-left 0.5s ease-out forwards; }
+      .ff-pop.theirs img { animation: ff-fly-right 0.5s ease-out forwards; }
+      .ff-pop.boom img { animation: ff-boom 0.4s ease-out forwards; }
+      @keyframes ff-fly-left {
+        0%   { opacity: 1; transform: translate(0, 0) rotate(0deg) scale(1); }
+        100% { opacity: 0; transform: translate(-130px, -70px) rotate(-120deg) scale(0.7); }
+      }
+      @keyframes ff-fly-right {
+        0%   { opacity: 1; transform: translate(0, 0) rotate(0deg) scale(1); }
+        100% { opacity: 0; transform: translate(130px, -70px) rotate(120deg) scale(0.7); }
+      }
+      @keyframes ff-boom {
+        0%   { opacity: 1; transform: scale(1); }
+        100% { opacity: 0; transform: scale(2.4); }
       }
       .ff-status { flex: none; text-align: center; font-size: 14px;
                    color: #9a9aa5; padding: 4px 0 8px; }
@@ -150,7 +193,10 @@ function createFruitFrenzyMatchClient(
   function makeEntitySpan(e: WireEntity): HTMLElement {
     const span = document.createElement("span");
     span.className = "ff-ent";
-    span.textContent = e.emoji;
+    const img = document.createElement("img");
+    img.src = spriteSrc(e.sprite);
+    img.alt = "";
+    span.appendChild(img);
     if (!ctx.isSpectator) {
       const tap = (ev: Event) => {
         ev.preventDefault();
@@ -170,14 +216,24 @@ function createFruitFrenzyMatchClient(
 
   function playPop(ev: SliceEvent) {
     const span = document.createElement("span");
-    span.className = "ff-pop";
-    span.textContent = ev.ev === "boom" ? "💥" : ev.emoji;
+    // Direction encodes ownership: your claims fly left, others fly right.
+    const dirClass =
+      ev.ev === "boom"
+        ? "boom"
+        : ev.by === ctx.selfPlayerId
+          ? "mine"
+          : "theirs";
+    span.className = `ff-pop ${dirClass}`;
+    const img = document.createElement("img");
+    img.src = ev.ev === "boom" ? spriteSrc("kaboom") : spriteSrc(ev.sprite);
+    img.alt = "";
+    span.appendChild(img);
     stageEl.appendChild(span);
     place(span, ev.x, ev.y);
     const t = setTimeout(() => {
       span.remove();
       popTimers.delete(t);
-    }, 400);
+    }, 550);
     popTimers.add(t);
   }
 

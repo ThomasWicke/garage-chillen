@@ -1,4 +1,7 @@
-// Brief countdown shown between "GM clicked Start" and "round begins".
+// Brief splash between "GM clicked Start" and "round begins". Deliberately
+// NO countdown number — with a timer it read as a third waiting screen; as a
+// plain name splash it's just an intro flash (the gamemode intro right after
+// carries the countdown).
 
 import type { MiniGameInfo } from "../../../party/protocol";
 
@@ -9,14 +12,9 @@ export function renderPreparingView(
   },
   container: HTMLElement,
 ): void {
-  const remaining = Math.max(
-    0,
-    Math.ceil((args.countdownEndsAt - Date.now()) / 1000),
-  );
   container.innerHTML = `
     <div class="preparing">
       <div class="preparing-name">${args.minigame?.displayName ?? "starting"}</div>
-      <div class="preparing-countdown" data-count-to="${args.countdownEndsAt}">${remaining}</div>
     </div>
   `;
 }

@@ -154,12 +154,23 @@ function createCopterCaveMatchClient(
         kk.outline(2, kk.rgb(255, 255, 255)),
       ]) as unknown as MarkerSprite;
 
-      // Hold to rise, release to fall. Send only on state change.
+      // Hold to rise, release to fall. Send immediately on change AND
+      // resend the current state every ~100ms — edge-only messages get
+      // lost (e.g. a press during the warm-up countdown), leaving the
+      // server thinking the copter is released while the finger is down.
       const setHold = (on: boolean) => {
         if (holding === on) return;
         holding = on;
         ctx.send({ type: "hold", on });
       };
+      let lastHoldSyncAt = 0;
+      kk.onUpdate(() => {
+        const now = Date.now();
+        if (now - lastHoldSyncAt >= 100) {
+          lastHoldSyncAt = now;
+          ctx.send({ type: "hold", on: holding });
+        }
+      });
       kk.onTouchStart(() => setHold(true));
       kk.onTouchEnd(() => setHold(false));
       kk.onMousePress(() => setHold(true));

@@ -1,5 +1,29 @@
 # Follow-up notes
 
+## Round 3 (2026-08-14, second playtest of the new games)
+
+- **Penalty Shootout**: shooter and keeper now look nothing alike — lime
+  attack view (ball on the spot, ⚽ SHOOT buttons) vs blue keeper view
+  (gloves, 🧤 DIVE buttons, blue goal frame/pitch).
+- **Fruit Frenzy**: entities are crew sprites now (watermelon / apple /
+  pineapple / grape / mushroom; bombs are the crew skull, boom is the
+  kaboom cloud). Claimed fruit fly off directionally: YOURS go LEFT,
+  everyone else's go RIGHT.
+- **Copter Cave**: two causes found for the instant deaths. (1) A real bug —
+  hold messages were edge-triggered and the server dropped/cleared them
+  during warm-up, so a finger already held at GO free-fell; holds are now
+  accepted during warm-up and the client re-syncs hold state every 100ms.
+  (2) Physics were brutal (900/900/420); now asymmetric 1000 rise / 550
+  gravity / 300 max fall (~35% hold duty to hover, tap-friendly), wider
+  gaps (360 start, 220 min), slightly slower scroll.
+- **Meteor Dodge**: meteors are the crew "steel" ball sprite (orange-tinted
+  every other one) instead of flat circles.
+- **Balloon Pump**: 💥 pop swapped for the crew kaboom sprite (same sweep).
+- **Preparing screen**: countdown number removed — it's a pure game-name
+  splash now (~1s), so it reads as an intro flash, not a third wait.
+- Asset rule confirmed across all games: crew sprites for game objects,
+  shapes/CSS fine for geometry, emoji only as UI glyphs (⚽🧤🥔 badges).
+
 ## Round 2 (2026-08-14, after playtest feedback)
 
 Everything from the playtest notes was addressed, plus the previously-listed

@@ -8,9 +8,9 @@
 //
 // Wire protocol (documented for the client):
 //   welcome: { field, durationMs, endsAt, deadlineAt, stunMs, players }
-//   state:   { entities: [{id, kind: "fruit"|"bomb", emoji, x, y}],
+//   state:   { entities: [{id, kind: "fruit"|"bomb", sprite, x, y}],
 //              scores: Record<pid, int>, stuns: Record<pid, stunnedUntil>,
-//              events: [{ev: "sliced"|"boom", id, by, x, y, emoji}],
+//              events: [{ev: "sliced"|"boom", id, by, x, y, sprite}],
 //              endsAt, deadlineAt }
 //   `events` carries the slice/boom happenings since the previous state
 //   broadcast (cleared after each send) so clients can play pop animations.
@@ -38,13 +38,14 @@ const BOMB_CHANCE = 0.15;
 const BOMB_PENALTY = 3;
 const STUN_MS = 1_500;
 
-const FRUIT_EMOJI = ["🍉", "🍎", "🍋", "🍇", "🍓"];
-const BOMB_EMOJI = "💣";
+// Crew sprite keys — the client maps these to @kaplayjs/crew data URIs.
+const FRUIT_SPRITES = ["watermelon", "apple", "pineapple", "grape", "mushroom"];
+const BOMB_SPRITE = "skuller"; // crew skull — reads "do not tap"
 
 type Entity = {
   id: number;
   kind: "fruit" | "bomb";
-  emoji: string;
+  sprite: string;
   x: number;
   y: number;
   vx: number;
@@ -57,7 +58,7 @@ type SliceEvent = {
   by: string;
   x: number;
   y: number;
-  emoji: string;
+  sprite: string;
 };
 
 type GameState = {
@@ -114,7 +115,7 @@ function createFruitFrenzyMatch(ctx: MatchContext): MatchSession {
       entities: state.entities.map((e) => ({
         id: e.id,
         kind: e.kind,
-        emoji: e.emoji,
+        sprite: e.sprite,
         x: Math.round(e.x),
         y: Math.round(e.y),
       })),
@@ -134,9 +135,9 @@ function createFruitFrenzyMatch(ctx: MatchContext): MatchSession {
       state.entities.push({
         id: state.entityIdCounter++,
         kind: isBomb ? "bomb" : "fruit",
-        emoji: isBomb
-          ? BOMB_EMOJI
-          : FRUIT_EMOJI[Math.floor(Math.random() * FRUIT_EMOJI.length)],
+        sprite: isBomb
+          ? BOMB_SPRITE
+          : FRUIT_SPRITES[Math.floor(Math.random() * FRUIT_SPRITES.length)],
         x,
         y: FF_FIELD_H + 40,
         // Gentle drift toward the middle so arcs stay on-screen.
@@ -246,7 +247,7 @@ function createFruitFrenzyMatch(ctx: MatchContext): MatchSession {
           by: playerId,
           x: Math.round(ent.x),
           y: Math.round(ent.y),
-          emoji: ent.emoji,
+          sprite: ent.sprite,
         });
       } else {
         state.scores.set(
@@ -260,7 +261,7 @@ function createFruitFrenzyMatch(ctx: MatchContext): MatchSession {
           by: playerId,
           x: Math.round(ent.x),
           y: Math.round(ent.y),
-          emoji: ent.emoji,
+          sprite: ent.sprite,
         });
       }
     },

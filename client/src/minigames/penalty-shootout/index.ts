@@ -131,6 +131,22 @@ function createPenaltyShootoutMatchClient(
           50% { transform: scale(0.95); }
           100% { transform: scale(1); }
         }
+        /* Role theming — the two halves of a round must not look alike.
+           Shooter = lime attack view (ball on the spot, SHOOT buttons);
+           keeper = blue goalkeeper view (gloves on the line, DIVE buttons). */
+        .ps.role-defend .ps-pitch {
+          background: linear-gradient(to bottom, #10202e 0%, #16303e 100%);
+        }
+        .ps.role-defend .ps-zone.ps-zone-mine { background: rgba(100,181,221,0.18); }
+        .ps.role-defend .ps-btn.ps-sel {
+          border-color: #64b5dd; background: #16303e; color: #64b5dd;
+        }
+        .ps-spot {
+          position: absolute; left: 50%; transform: translateX(-50%);
+          bottom: 4px; font-size: 40px; line-height: 1; pointer-events: none;
+        }
+        .ps.role-defend .ps-goal { border-color: #64b5dd; }
+        .ps-btn .ps-btn-icon { display: block; font-size: 22px; line-height: 1.2; }
       </style>
       <div class="ps-banner" id="ps-banner">connecting…</div>
       <div class="ps-sub" id="ps-sub"></div>
@@ -143,12 +159,13 @@ function createPenaltyShootoutMatchClient(
             </div>`,
           ).join("")}
         </div>
+        <span class="ps-spot" id="ps-spot"></span>
       </div>
       <div class="ps-status" id="ps-status"></div>
       <div class="ps-buttons" id="ps-buttons">
-        <button class="ps-btn" type="button" data-zone="left">⬅ LEFT</button>
-        <button class="ps-btn" type="button" data-zone="center">CENTER</button>
-        <button class="ps-btn" type="button" data-zone="right">RIGHT ➡</button>
+        <button class="ps-btn" type="button" data-zone="left"><span class="ps-btn-icon"></span>⬅ LEFT</button>
+        <button class="ps-btn" type="button" data-zone="center"><span class="ps-btn-icon"></span>CENTER</button>
+        <button class="ps-btn" type="button" data-zone="right"><span class="ps-btn-icon"></span>RIGHT ➡</button>
       </div>
     </div>
   `;
@@ -254,6 +271,19 @@ function createPenaltyShootoutMatchClient(
     canPick = msg.phase === "choosing" && (iShoot || iKeep);
     for (const b of btnEls.values()) b.disabled = !canPick;
 
+    // Role theming: the whole scene reads differently per role — lime
+    // attack view with the ball on the spot vs blue keeper view with the
+    // gloves, plus verb-labeled buttons (SHOOT vs DIVE).
+    rootEl.classList.toggle("role-shoot", iShoot);
+    rootEl.classList.toggle("role-defend", iKeep);
+    const spotEl = rootEl.querySelector<HTMLElement>("#ps-spot")!;
+    spotEl.textContent = iShoot ? "⚽" : iKeep ? "🧤" : "";
+    const btnIcon = iShoot ? "⚽" : iKeep ? "🧤" : "";
+    for (const b of btnEls.values()) {
+      const icon = b.querySelector<HTMLElement>(".ps-btn-icon");
+      if (icon && icon.textContent !== btnIcon) icon.textContent = btnIcon;
+    }
+
     // Reveal emoji + zone highlight.
     for (const [zone, el] of zoneEls) {
       const r = msg.phase === "reveal" ? msg.reveal : null;
@@ -272,13 +302,13 @@ function createPenaltyShootoutMatchClient(
       if (iShoot) {
         bannerEl.textContent = "⚽ YOU SHOOT";
         subEl.textContent = pickedZone
-          ? `aiming ${pickedZone} · ${secs}s`
-          : `pick a corner! ${secs}s`;
+          ? `shooting ${pickedZone} · ${secs}s`
+          : `where do you SHOOT? ${secs}s`;
       } else if (iKeep) {
-        bannerEl.textContent = "🧤 YOU DEFEND";
+        bannerEl.textContent = "🧤 YOU'RE THE KEEPER";
         subEl.textContent = pickedZone
           ? `diving ${pickedZone} · ${secs}s`
-          : `guess their corner! ${secs}s`;
+          : `where do you DIVE? ${secs}s`;
       } else {
         bannerEl.textContent = `${shooterNick} shoots · ${keeperNick} defends`;
         subEl.textContent = `picking… ${secs}s`;

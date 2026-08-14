@@ -8,7 +8,6 @@
 import kaplay from "kaplay";
 import type {
   AnchorComp,
-  CircleComp,
   ColorComp,
   GameObj,
   OpacityComp,
@@ -16,6 +15,7 @@ import type {
   RectComp,
   SpriteComp,
 } from "kaplay";
+import { steelData } from "@kaplayjs/crew";
 import { avatarSrc } from "../../identity";
 import { createMatchFlash } from "../flash";
 import { formatRemaining, statusLine } from "../clock";
@@ -42,7 +42,7 @@ type StateMsg = {
 };
 
 type AvatarSprite = GameObj<PosComp | SpriteComp | AnchorComp | OpacityComp>;
-type MeteorBody = GameObj<PosComp | CircleComp | ColorComp | AnchorComp>;
+type MeteorBody = GameObj<PosComp | SpriteComp | ColorComp | AnchorComp>;
 type MeteorStreak = GameObj<
   PosComp | RectComp | ColorComp | AnchorComp | OpacityComp
 >;
@@ -103,6 +103,9 @@ function createMeteorDodgeMatchClient(
   // renders as a glyph-less black bar, so it's drawn geometry instead.
   let youMarker: MarkerSprite | null = null;
   let youMarkerUntil = 0;
+  /** Sprites are loaded (meteor bodies reference the steel sprite, which is
+   *  created lazily in applyState and must not race the async load). */
+  let spritesReady = false;
 
   // Drag input — target x, sent throttled from onUpdate.
   let desiredX: number | null = null;
@@ -139,6 +142,12 @@ function createMeteorDodgeMatchClient(
     for (const p of players) {
       kk.loadSprite(`md-${p.playerId}`, avatarSrc(p.avatarId));
     }
+    // Meteors use the crew "steel" ball sprite (tinted orange every other id)
+    // — plain colored circles looked out of place next to the crew avatars.
+    kk.loadSprite(
+      "md-meteor",
+      steelData.kind === "Sprite" ? steelData.outlined : "",
+    );
 
     // Render order: ghosts first (drawn behind), self last (drawn in front).
     const ordered = [...players];
@@ -149,6 +158,7 @@ function createMeteorDodgeMatchClient(
     }
 
     kk.onLoad(() => {
+      spritesReady = true;
       for (const p of ordered) {
         const isSelf = p.playerId === ctx.selfPlayerId;
         const avatar = kk.add([
@@ -242,6 +252,7 @@ function createMeteorDodgeMatchClient(
       seen.add(m.id);
       let pair = meteorSprites.get(m.id);
       if (!pair) {
+        if (!spritesReady) continue; // steel sprite still loading
         const orange = m.id % 2 === 1;
         const streak = kk.add([
           kk.rect(4, 26),
@@ -251,10 +262,11 @@ function createMeteorDodgeMatchClient(
           kk.opacity(0.6),
         ]);
         const body = kk.add([
-          kk.circle(m.r),
+          kk.sprite("md-meteor", { width: m.r * 2, height: m.r * 2 }),
           kk.pos(m.x, m.y),
           kk.anchor("center"),
-          orange ? kk.color(232, 146, 62) : kk.color(150, 150, 165),
+          // Sprite tint (multiplies) — orange glow vs plain steel.
+          orange ? kk.color(255, 180, 110) : kk.color(255, 255, 255),
         ]);
         pair = { body, streak };
         meteorSprites.set(m.id, pair);
