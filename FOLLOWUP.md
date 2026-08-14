@@ -1,5 +1,37 @@
 # Follow-up notes
 
+## Round 4 (2026-08-14, five experimental games)
+
+Five new games on mechanics the collection didn't have, all LMS, all in
+Recommended (28 games total now):
+
+- **Spy Signal** (minPlayers 3) — social deduction played IN THE ROOM: all
+  phones secretly show the same crew symbol except the spy's; then screens
+  go deliberately blank ("TALK!") while the group argues out loud, votes on
+  their phones, and the reveal pays +3 to correct voters or +6 to an escaped
+  spy. Phones are secret-keepers + ballot boxes; the game is faces and
+  bluffing. Secrets travel only over per-player sends, re-sent during the
+  peek phase; broadcasts stay clean until the reveal.
+- **Ten Seconds** — blind time perception: a visible timer vanishes at
+  3.00s; tap STOP at exactly 10.00. Best error +3, second +1, three rounds.
+- **Hot Bid** — sealed-bid auction: 100 coins, 8 prize cards (crew-sprite
+  faces, values 2–10), secret bids with lock-in, highest pays what they
+  bid. Points, then leftover coins as tiebreak. Bids never broadcast before
+  the reveal.
+- **Don't Let Go** — hold your finger on a wandering dot; 350ms grace;
+  server-scheduled fake prompts ("RELEASE FOR +10!") try to trick you into
+  lifting. Contact state is idempotently re-sent every 100ms (the copter
+  lesson, applied from day one).
+- **Marble Derby** — betting spectacle: six crew-character marbles drop
+  through a server-simulated plinko board; bet before the drop (+3 winner,
+  +1 second), two races. The builder simulated 300 races and fixed a real
+  odds bug (open wall corridors made edge marbles win ~58%; wall pegs
+  restored near-uniform odds).
+
+All verified against the contract (no timers, no kaplay text, bounded
+loops, shared-rank ties, warm-up anchoring); `tsc` + `vite build` pass.
+Remember: new games need `npm run deploy:party` AND a client deploy.
+
 ## Round 3 (2026-08-14, second playtest of the new games)
 
 - **Penalty Shootout**: shooter and keeper now look nothing alike — lime

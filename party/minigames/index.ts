@@ -24,5 +24,10 @@ import "./quick-math";
 import "./odd-one-out";
 import "./copter-cave";
 import "./meteor-dodge";
+import "./spy-signal";
+import "./ten-seconds";
+import "./hot-bid";
+import "./dont-let-go";
+import "./marble-derby";
 
 export { allMiniGames, getMiniGame } from "./registry";
