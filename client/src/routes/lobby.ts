@@ -12,7 +12,12 @@
 // (e.g. tournament), which renders the bracket overlay and mounts the per-
 // match client when the local player is in a match.
 
-import { ensureIdentity, nextAvatarId, saveIdentity } from "../identity";
+import {
+  ensureIdentity,
+  identityFromUrl,
+  nextAvatarId,
+  saveIdentity,
+} from "../identity";
 import { getGamemodeClient } from "../gamemodes";
 import "../gamemodes"; // ensure gamemode client self-registration
 import type { GamemodeClientSession } from "../gamemodes/types";
@@ -25,13 +30,15 @@ import { renderSessionResultsView } from "../ui/session-results-view";
 import { renderSessionToolbar } from "../ui/session-toolbar";
 import { getMiniGameClient } from "../minigames";
 import "../minigames"; // ensure mini-game client self-registration
-import type {
-  LobbyState,
-  MiniGameInfo,
-  PublicPlayer,
-  RoundResult,
-  SequencePublicState,
-  ServerToClient,
+import {
+  BOT_STRATEGIES,
+  isTestLobbyCode,
+  type LobbyState,
+  type MiniGameInfo,
+  type PublicPlayer,
+  type RoundResult,
+  type SequencePublicState,
+  type ServerToClient,
 } from "../../../party/protocol";
 
 type ViewState = {
@@ -63,11 +70,17 @@ type ViewState = {
   /** Last edit-rejection (cleared on next successful edit / next player-list / timer). */
   editError: { field: "nickname" | "avatar"; reason: string } | null;
   editErrorTimer: ReturnType<typeof setTimeout> | null;
+  /** Test lobby (code starts with TEST): server-confirmed debug status. */
+  test: { enabled: boolean; fast: boolean };
+  /** Last mini-game that ran this visit — the test panel's "again" button. */
+  lastMinigameId: string | null;
 };
 
 export function renderLobby(rawCode: string): () => void {
   const code = rawCode.toUpperCase();
-  const identity = ensureIdentity();
+  // `?pid=` = throwaway identity for multi-tab testing; never persisted.
+  const urlIdentity = identityFromUrl();
+  const identity = urlIdentity ?? ensureIdentity();
   const app = document.getElementById("app")!;
 
   app.innerHTML = `
@@ -99,6 +112,8 @@ export function renderLobby(rawCode: string): () => void {
     nicknameDraft: "",
     editError: null,
     editErrorTimer: null,
+    test: { enabled: isTestLobbyCode(code), fast: true },
+    lastMinigameId: null,
   };
 
   function isEditEligible(): boolean {
@@ -199,10 +214,23 @@ export function renderLobby(rawCode: string): () => void {
       .addEventListener("click", () => window.location.reload());
   }
 
+  function renderToolbar() {
+    const isGm = !!state.selfPlayerId && state.gmPlayerId === state.selfPlayerId;
+    renderSessionToolbar(
+      { ...state, testAbort: state.test.enabled && isGm },
+      toolbarEl,
+      {
+        // Test lobbies: GM can bail out of a running round (a stuck match,
+        // or "seen enough") without waiting for the deadline.
+        onAbort: () => conn.send({ scope: "lobby", type: "back-to-lobby" }),
+      },
+    );
+  }
+
   function rerender() {
     const isGm = !!state.selfPlayerId && state.gmPlayerId === state.selfPlayerId;
 
-    renderSessionToolbar(state, toolbarEl);
+    renderToolbar();
 
     if (state.lobbyState !== "playing") skewShownForKey = null;
 
@@ -222,9 +250,44 @@ export function renderLobby(rawCode: string): () => void {
           editError: state.editError,
           editingNickname: state.editingNickname && editable,
           nicknameDraft: state.nicknameDraft,
+          test: state.test.enabled
+            ? { fast: state.test.fast, lastMinigameId: state.lastMinigameId }
+            : undefined,
         },
         sceneEl,
         {
+          onTestAddBot: () =>
+            conn.send({ scope: "lobby", type: "test", action: "add-bot" }),
+          onTestRemoveBot: () =>
+            conn.send({ scope: "lobby", type: "test", action: "remove-bot" }),
+          onTestCycleBot: (playerId) => {
+            const bot = state.players.find((p) => p.playerId === playerId);
+            if (!bot?.bot) return;
+            const i = BOT_STRATEGIES.indexOf(bot.bot);
+            const strategy = BOT_STRATEGIES[(i + 1) % BOT_STRATEGIES.length];
+            conn.send({
+              scope: "lobby",
+              type: "test",
+              action: "set-bot-strategy",
+              playerId,
+              strategy,
+            });
+          },
+          onTestToggleFast: () =>
+            conn.send({
+              scope: "lobby",
+              type: "test",
+              action: "set-fast",
+              fast: !state.test.fast,
+            }),
+          onTestReplay: () => {
+            if (!state.lastMinigameId) return;
+            conn.send({
+              scope: "lobby",
+              type: "start-round",
+              minigameId: state.lastMinigameId,
+            });
+          },
           onPickMinigame: () => {
             if (drawerClose) return; // already open
             const connectedCount = state.players.filter((p) => p.connected).length;
@@ -367,7 +430,7 @@ export function renderLobby(rawCode: string): () => void {
             }),
           setMatchScore: (text) => {
             state.matchScore = text;
-            renderSessionToolbar(state, toolbarEl);
+            renderToolbar();
           },
         });
         activeGamemodeKey = key;
@@ -434,7 +497,7 @@ export function renderLobby(rawCode: string): () => void {
         const self = state.players.find(
           (p) => p.playerId === state.selfPlayerId,
         );
-        if (self) {
+        if (self && !urlIdentity) {
           saveIdentity({
             playerId: identity.playerId,
             nickname: self.nickname,
@@ -459,6 +522,8 @@ export function renderLobby(rawCode: string): () => void {
         state.availableMinigames = msg.minigames;
       } else if (msg.scope === "lobby" && msg.type === "session-state") {
         state.sessionScores = msg.scores;
+      } else if (msg.scope === "lobby" && msg.type === "test-state") {
+        state.test = { enabled: msg.enabled, fast: msg.fast };
       } else if (msg.scope === "lobby" && msg.type === "state") {
         state.lobbyState = msg.state;
         state.sequence = msg.sequence ?? null;
@@ -466,6 +531,7 @@ export function renderLobby(rawCode: string): () => void {
           state.activeMinigameId = msg.minigameId;
           state.activeGamemodeId = null;
           state.prepareCountdownEndsAt = msg.countdownEndsAt;
+          state.lastMinigameId = msg.minigameId;
         } else if (msg.state === "playing") {
           state.activeMinigameId = msg.minigameId;
           state.activeGamemodeId = msg.gamemodeId;

@@ -1,5 +1,38 @@
 # Follow-up notes
 
+## Round 6 (2026-08-15, Spy Signal → Signal Imposter)
+
+Playtest verdict: concept strong, but the spy didn't know they were the
+spy, so everyone was incentivised to blurt their symbol and the 3-vs-1
+was obvious. Redesigned (module id stays `spy-signal`; display name
+**Signal Imposter**):
+
+- The imposter KNOWS they're the imposter and sees NO symbol (only the
+  four candidates). Crew see the signal. The room talks — hint at it
+  without naming it; the imposter bluffs and tries to work it out.
+- ONE round (was two). Peek 10s (was 7), discuss 60s (was 35), vote 20s,
+  reveal 12s.
+- Vote phase: crew tap an avatar; the imposter taps a symbol (their guess
+  at the signal). The imposter shows as "voted" once they've guessed so
+  the voted-badges don't out them.
+- Scoring (`party/minigames/spy-signal/index.ts` constants): caught =
+  imposter has STRICTLY the most votes (a tie = escaped). Crew: +2 group
+  bonus if caught, +2 more for personally voting the imposter (right vote
+  pays even when the group missed). Imposter: +5 if not caught, 0 if
+  caught, +2 consolation for guessing the signal. So: caught & right 4,
+  caught & wrong 2, escaped & right 2, escaped & wrong 0; imposter 7/5/2/0.
+- Reveal fits one phone screen, no scrolling: 36px avatar line, verdict,
+  ONE row of small symbols (signal outlined green, wrong guess red),
+  per-player point chips, vote tally chips; the sub-line explains the
+  scoring in one sentence.
+- Why "picked the spy but lost" happened before: two rounds, +3 per
+  correct voter vs +6 for an escaped spy — the round-1 spy who escaped
+  out-scored everyone who caught the round-2 spy; plus tied votes picked
+  the accused at random. Gone with one round + the new scoring.
+- Also fixed in passing: the hidden reveal box rendered as an empty bordered
+  card during peek/discuss (`display:flex` beat `[hidden]`), and the
+  toolbar match score could wrap when the abort button is present.
+
 ## Round 5 (2026-08-15, playtest of the experimental games)
 
 - **Don't Let Go**: fake-prompt "temptations" removed entirely (they read as
@@ -35,13 +68,13 @@
 Five new games on mechanics the collection didn't have, all LMS, all in
 Recommended (28 games total now):
 
-- **Spy Signal** (minPlayers 3) — social deduction played IN THE ROOM: all
-  phones secretly show the same crew symbol except the spy's; then screens
-  go deliberately blank ("TALK!") while the group argues out loud, votes on
-  their phones, and the reveal pays +3 to correct voters or +6 to an escaped
-  spy. Phones are secret-keepers + ballot boxes; the game is faces and
-  bluffing. Secrets travel only over per-player sends, re-sent during the
-  peek phase; broadcasts stay clean until the reveal.
+- **Spy Signal** (minPlayers 3; redesigned as **Signal Imposter** in
+  Round 6) — social deduction played IN THE ROOM: phones secretly show the
+  signal symbol (imposter: none), screens go deliberately blank ("TALK!")
+  while the group argues out loud, then everyone votes on their phones.
+  Phones are secret-keepers + ballot boxes; the game is faces and bluffing.
+  Secrets travel only over per-player sends, re-sent during the peek
+  phase; broadcasts stay clean until the reveal.
 - **Ten Seconds** — blind time perception: a visible timer vanishes at
   3.00s; tap STOP at exactly 10.00. Best error +3, second +1, three rounds.
 - **Hot Bid** — sealed-bid auction: 100 coins, 8 prize cards (crew-sprite
@@ -171,27 +204,64 @@ reconnect safe. `tsc` + `vite build` pass with all 23 games registered.
 - New-game polish pass pending a real playtest (10 fresh games will surely
   have feel issues — tune constants, not structures).
 
-## Testing workflow ideas (shelved by request — unchanged)
+## Testing workflow (implemented 2026-08-15)
 
-The pain: localStorage holds ONE identity per browser profile, so multiplayer
-testing means N incognito windows. Ideas, roughly in order of value/effort:
+Solo playtesting without a friend or a second device. Everything is gated
+on the lobby code: **a code starting with `TEST` is a test lobby** (join
+`TEST` from a phone, or open `/lobby/TESTanything`). Normal lobbies are
+untouched.
 
-1. **Headless bot script**: a Node script using `partysocket` that spawns N
-   fake players into a lobby code — `npm run bots -- ABCD 4`. Protocol is
-   fully typed in `party/protocol.ts`; identity is just a UUID + `identify`.
-   Bots answer per-game with naive inputs. You play on one real device.
-2. **Identity override via URL param** (`?pid=bot1&nick=Bot1`) bypassing
-   localStorage — makes N plain tabs viable and enables idea 3.
-3. **Multi-client harness page**: dev-only `/test` route with 4–6 iframes,
-   each with a `?pid=` identity — a whole lobby in one window.
-4. **Server test mode**: TEST-prefixed rooms get near-zero countdowns, a
-   debug force-start message, optionally server-side bots.
-5. **Deterministic sim tests**: inject a clock via `MatchContext`
-   (`ctx.now()`) so vitest can step ticks and unit-test collision/placement
-   logic — several round-1 placement bugs would have been caught by tests.
-6. **Playwright multi-context e2e** as a later smoke suite.
+**How to test a game alone**
 
-Recommended starting combo: 1 + 2, then 4.
+1. Open `/lobby/TEST` (dev or prod), you're host.
+2. In the orange **test panel** tap `+ bot` 1–3×. Bots are server-side
+   players (`party/bots.ts`) that appear in the roster like anyone else.
+3. Pick a game (or `Shuffle`). Play. Bots **mirror your inputs**: every
+   match message you send is re-injected under each bot's id ~250ms later,
+   through the same gamemode/match code path a real socket message takes.
+   In tournaments each bot mirrors into its *own* match
+   (`GamemodeSession.matchIdFor`), so a human-vs-bot match gives you a
+   shadow opponent. No per-game AI anywhere.
+4. `again: <game>` restarts the last game; `✕` in the toolbar aborts a
+   running round (GM, test lobbies only).
+
+**Bot strategies** — tap a bot's `BOT · …` tag to cycle:
+- `mirror` — perfect shadow. Survives inaction-=-death games (flappy,
+  copter, don't-let-go…) as long as you do; in reflex games you win by
+  the 250ms.
+- `sloppy` — mirrors 70% of messages, 150–700ms late → falls behind, dies
+  at other times → exercises staggered LMS placements; in secret-pick
+  games (penalty shootout, hot bid) it produces different picks.
+- `idle` — sends nothing (the "friend who's on their phone" case).
+New bots alternate mirror/sloppy.
+
+**fast waits** (default on): tournament intro/between 2s, LMS intro
+1.5s, round results 3s, shuffle gap 3s, finale 6s — and **bot-vs-bot
+tournament matches are coin-flipped** instead of played (two mirror bots
+would only stalemate each other until the deadline). Turn it off to see
+real pacing / let bot matches run.
+
+**Multi-phone harness**: `/test.html?code=TESTB&n=3` shows N phone-sized
+iframes in one window, each with its own throwaway identity
+(`?pid=harness-N`). Use it to see what non-host, spectator and loser
+screens look like. `?pid=x&nick=y&avatar=bean` works on any lobby URL and
+is never written to localStorage.
+
+**Known limits**
+- Bots only act while a human is sending inputs — once you're dead /
+  spectating, mirror bots go quiet (LMS then usually ends fast, which is
+  fine). To watch bots play without you, real per-game brains would be
+  needed (`MiniGameDefinition.botBrain?` would be the hook — not built).
+- Mirror bots pick what you pick: penalty shootout vs a `mirror` keeper is
+  always saved; use `sloppy`/`idle` there.
+- Bots are room state: if the room is evicted (nobody connected for a
+  while) they vanish; add them again.
+- Kaplay-driven games need a *visible* tab — background tabs pause rAF,
+  so kaplay input handlers don't fire (irrelevant on a phone; matters if
+  you script the browser).
+
+Not built (still ideas): deterministic sim tests with an injected clock
+(`ctx.now()`) for vitest; Playwright multi-context smoke suite.
 
 ---
 

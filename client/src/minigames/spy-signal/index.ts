@@ -1,11 +1,13 @@
-// Spy Signal client. Pure DOM. The game happens IN THE ROOM — the phone
-// only shows your secret symbol during "peek", deliberately shows nothing
-// revealing during "discuss" (the accusations are verbal), collects your
-// vote during "vote", and shows the big reveal at the end of each round.
+// Signal Imposter client (module id "spy-signal"). Pure DOM. The game
+// happens IN THE ROOM — the phone only shows your secret during "peek"
+// (crew: the signal symbol · imposter: "you're the imposter", no symbol),
+// deliberately shows nothing revealing during "discuss", collects your
+// vote (crew: an avatar · imposter: a symbol guess) during "vote", and
+// shows a compact one-screen reveal at the end.
 //
 // Secrets arrive via per-player `secret` messages (re-sent ~500ms during
-// peek; applied idempotently, keyed by round). A player who reconnects
-// after peek never gets one and sees "you missed the peek".
+// peek; applied idempotently). A player who reconnects after peek never
+// gets one and sees "you missed the peek".
 
 import {
   appleData,
@@ -36,19 +38,25 @@ type WelcomeMsg = {
   type: "welcome";
   deadlineAt: number;
   startAt: number;
-  totalRounds: number;
+  scoring: {
+    groupBonus: number;
+    rightVote: number;
+    imposterEscape: number;
+    imposterGuess: number;
+  };
   players: { playerId: string; nickname: string; avatarId: string }[];
 };
 
 type Reveal = {
-  spyId: string;
-  spyNickname: string;
+  imposterId: string;
+  imposterNickname: string;
   targetSymbol: string;
-  spySymbol: string;
+  imposterGuess: string | null;
+  guessRight: boolean;
   accusedId: string | null;
   caught: boolean;
-  fled: boolean;
   tie: boolean;
+  fled: boolean;
   votes: Record<string, string>;
   awarded: Record<string, number>;
 };
@@ -56,8 +64,6 @@ type Reveal = {
 type StateMsg = {
   type: "state";
   phase: Phase;
-  round: number;
-  totalRounds: number;
   candidates: string[];
   phaseEndsAt: number;
   deadlineAt: number;
@@ -67,7 +73,7 @@ type StateMsg = {
   reveal: Reveal | null;
 };
 
-type SecretMsg = { type: "secret"; round: number; symbol: string };
+type SecretMsg = { type: "secret"; imposter: boolean; symbol: string | null };
 
 function crewSrc(data: CrewAsset): string {
   return data.kind === "Sprite" ? data.outlined : "";
@@ -98,7 +104,7 @@ function escapeHtml(s: string): string {
   );
 }
 
-function createSpySignalMatchClient(
+function createSignalImposterMatchClient(
   ctx: MatchClientContext,
 ): MatchClientSession {
   ctx.container.innerHTML = `
@@ -116,8 +122,9 @@ function createSpySignalMatchClient(
           background: #0a0a14;
           color: #f2f2f5;
           text-align: center;
-          overflow-y: auto;
+          overflow: hidden;
         }
+        .spy-root [hidden] { display: none !important; }
         .spy-status { font-size: 13px; color: #9a9aa5; }
         .spy-banner {
           font-size: clamp(20px, 6.5vw, 30px);
@@ -126,6 +133,7 @@ function createSpySignalMatchClient(
           min-height: 1.3em;
           line-height: 1.2;
         }
+        .spy-banner.spy-imp { color: #e0596a; }
         .spy-sub {
           font-size: 15px;
           color: #f2f2f5;
@@ -152,7 +160,9 @@ function createSpySignalMatchClient(
           align-items: center;
           justify-content: center;
           transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+          -webkit-tap-highlight-color: transparent;
         }
+        .spy-symbols.spy-tappable .spy-sym { cursor: pointer; }
         .spy-sym img {
           width: 72px;
           height: 72px;
@@ -214,53 +224,83 @@ function createSpySignalMatchClient(
           color: #abdd64;
           pointer-events: none;
         }
+
+        /* Reveal — one screen, no scrolling: small avatar line, verdict,
+           ONE row of small symbols, then compact chip rows. */
         .spy-reveal {
           display: flex;
           flex-direction: column;
           align-items: center;
-          gap: 10px;
-          width: min(340px, 92%);
+          gap: 8px;
+          width: min(360px, 94%);
           background: #14141f;
           border: 3px solid #2a2a3a;
           border-radius: 16px;
-          padding: 14px;
+          padding: 12px 10px;
           animation: spy-pop 0.35s ease-out;
         }
         @keyframes spy-pop {
           from { transform: scale(0.85); opacity: 0; }
           to { transform: scale(1); opacity: 1; }
         }
-        .spy-reveal-spy img {
-          width: 64px;
-          height: 64px;
-          border-radius: 10px;
+        .spy-reveal-imp {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 15px;
+          font-weight: 700;
         }
-        .spy-reveal-spy .spy-nick { font-size: 15px; font-weight: 700; }
+        .spy-reveal-imp img { width: 36px; height: 36px; border-radius: 8px; }
+        .spy-reveal-verdict {
+          font-size: 17px;
+          font-weight: 800;
+          color: #abdd64;
+          line-height: 1.2;
+        }
+        .spy-reveal-verdict.spy-bad { color: #e0596a; }
         .spy-reveal-syms {
           display: flex;
-          gap: 18px;
+          gap: 8px;
           justify-content: center;
+          align-items: flex-end;
         }
         .spy-reveal-syms .spy-rs {
           display: flex;
           flex-direction: column;
           align-items: center;
-          gap: 4px;
-          font-size: 12px;
+          gap: 2px;
+          font-size: 10px;
           color: #9a9aa5;
+          padding: 4px;
+          border: 2px solid transparent;
+          border-radius: 10px;
+          min-width: 52px;
         }
+        .spy-reveal-syms .spy-rs.spy-target { border-color: #abdd64; color: #abdd64; }
+        .spy-reveal-syms .spy-rs.spy-guess-wrong { border-color: #e0596a; color: #e0596a; }
         .spy-reveal-syms img {
-          width: 64px;
-          height: 64px;
+          width: 36px;
+          height: 36px;
           image-rendering: pixelated;
         }
-        .spy-reveal-verdict {
-          font-size: 17px;
-          font-weight: 800;
-          color: #abdd64;
+        .spy-chips {
+          display: flex;
+          flex-wrap: wrap;
+          justify-content: center;
+          gap: 4px 6px;
+          font-size: 12px;
+          line-height: 1.2;
         }
-        .spy-reveal-verdict.spy-bad { color: #e0596a; }
-        .spy-reveal-scored { font-size: 13px; color: #9a9aa5; }
+        .spy-chip {
+          background: #1e1e2c;
+          border-radius: 6px;
+          padding: 3px 7px;
+          white-space: nowrap;
+        }
+        .spy-chip.spy-me { outline: 1px solid #abdd64; }
+        .spy-chip .spy-plus { color: #abdd64; font-weight: 700; }
+        .spy-chip .spy-zero { color: #9a9aa5; }
+        .spy-reveal-note { font-size: 11px; color: #9a9aa5; }
         .spy-muted { color: #9a9aa5; }
       </style>
       <div class="spy-status" id="spy-status"></div>
@@ -283,20 +323,25 @@ function createSpySignalMatchClient(
   const flash = createMatchFlash(rootEl);
 
   let players: WelcomeMsg["players"] = [];
+  let scoring: WelcomeMsg["scoring"] = {
+    groupBonus: 2,
+    rightVote: 2,
+    imposterEscape: 5,
+    imposterGuess: 2,
+  };
   let built = false;
   let amParticipant = false;
 
-  /** round → secret symbol key. Idempotent apply; re-sent by the server. */
-  const secretByRound = new Map<number, string>();
-  /** Local record of own vote per round (broadcasts never say who-for-whom). */
-  let myVoteRound = 0;
+  /** My secret: null = not received (yet). Idempotent; re-sent by server. */
+  let secret: SecretMsg | null = null;
+  /** Local record of own pick (broadcasts never say who-for-whom). */
   let myVoteTarget: string | null = null;
+  let myGuess: string | null = null;
 
-  let shownRound = 0; // for per-round client resets
-  let flashedRound = 0; // reveal flash fired for this round
+  let flashed = false;
   let builtCandidatesKey = "";
   let builtVoteKey = "";
-  let builtRevealKey = "";
+  let builtReveal = false;
 
   function nickOf(pid: string | null): string {
     if (!pid) return "?";
@@ -305,12 +350,13 @@ function createSpySignalMatchClient(
 
   function applyWelcome(msg: WelcomeMsg) {
     players = msg.players;
+    if (msg.scoring) scoring = msg.scoring;
     amParticipant =
       !ctx.isSpectator &&
       players.some((p) => p.playerId === ctx.selfPlayerId);
     if (built) return; // rebuild-safe: welcome is replayed on reconnect
     built = true;
-    bannerEl.textContent = "SPY SIGNAL";
+    bannerEl.textContent = "SIGNAL IMPOSTER";
     subEl.textContent = "eyes on your own phone!";
   }
 
@@ -354,21 +400,20 @@ function createSpySignalMatchClient(
     const connSet = new Set(state.connected);
     voteEl.querySelectorAll<HTMLElement>(".spy-vote-cell").forEach((el) => {
       const pid = el.dataset.pid!;
-      el.classList.toggle(
-        "spy-picked",
-        myVoteRound === state.round && myVoteTarget === pid,
-      );
+      el.classList.toggle("spy-picked", myVoteTarget === pid);
       el.classList.toggle("spy-gone", !connSet.has(pid));
       const badge = el.querySelector<HTMLElement>(".spy-voted-badge");
       if (badge) badge.hidden = !votedSet.has(pid);
     });
   }
 
-  // Vote taps: delegated, touchstart + mousedown, debounced.
-  let lastTapAt = 0;
   let currentState: StateMsg | null = null;
-  const tap = (e: Event) => {
-    if (ctx.isSpectator || !amParticipant) return;
+  const amImposter = () => secret?.imposter === true;
+
+  // Crew vote taps: delegated, touchstart + mousedown, debounced.
+  let lastTapAt = 0;
+  const voteTap = (e: Event) => {
+    if (ctx.isSpectator || !amParticipant || amImposter()) return;
     const st = currentState;
     if (!st || st.phase !== "vote") return;
     const cell = (e.target as HTMLElement | null)?.closest?.(
@@ -383,81 +428,127 @@ function createSpySignalMatchClient(
     const pid = cell.dataset.pid;
     if (!pid || pid === ctx.selfPlayerId) return;
     if (!st.connected.includes(pid)) return;
-    myVoteRound = st.round;
     myVoteTarget = pid;
     ctx.send({ type: "vote", targetId: pid });
     updateVoteGrid(st);
   };
-  voteEl.addEventListener("touchstart", tap, { passive: false });
-  voteEl.addEventListener("mousedown", tap);
+  voteEl.addEventListener("touchstart", voteTap, { passive: false });
+  voteEl.addEventListener("mousedown", voteTap);
+
+  // Imposter guess taps on the symbol grid (vote phase only).
+  const guessTap = (e: Event) => {
+    if (ctx.isSpectator || !amParticipant || !amImposter()) return;
+    const st = currentState;
+    if (!st || st.phase !== "vote") return;
+    const cell = (e.target as HTMLElement | null)?.closest?.(".spy-sym") as
+      | HTMLElement
+      | null;
+    if (!cell) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const now = Date.now();
+    if (now - lastTapAt < 80) return;
+    lastTapAt = now;
+    const sym = cell.dataset.sym;
+    if (!sym || !st.candidates.includes(sym)) return;
+    myGuess = sym;
+    ctx.send({ type: "guess", symbol: sym });
+    highlightSymbol(sym);
+  };
+  symbolsEl.addEventListener("touchstart", guessTap, { passive: false });
+  symbolsEl.addEventListener("mousedown", guessTap);
 
   function buildReveal(state: StateMsg) {
     const r = state.reveal;
-    if (!r) return;
-    const key = `${state.round}:${r.spyId}:${r.fled}`;
-    if (key === builtRevealKey) return;
-    builtRevealKey = key;
+    if (!r || builtReveal) return;
+    builtReveal = true;
 
-    const spyAvatar =
-      players.find((p) => p.playerId === r.spyId)?.avatarId ?? "";
+    const impAvatar =
+      players.find((p) => p.playerId === r.imposterId)?.avatarId ?? "";
     const verdict = r.fled
-      ? "the spy fled! +1 for everyone else"
+      ? "the imposter fled! +1 for everyone else"
       : r.caught
-        ? "SPY CAUGHT! +3 for correct votes"
-        : "spy got away · spy +6";
+        ? "IMPOSTER CAUGHT!"
+        : r.tie
+          ? "tied vote — the imposter slips away!"
+          : "the imposter got away!";
     const verdictBad = !r.caught && !r.fled;
-    const tieNote = r.tie
-      ? `<div class="spy-reveal-scored">vote was tied · accused picked at random</div>`
-      : "";
+
+    // ONE row of small symbols: signal highlighted, wrong guess marked.
+    const symsRow = state.candidates
+      .map((s) => {
+        const isTarget = s === r.targetSymbol;
+        const isGuess = r.imposterGuess === s;
+        const cls = isTarget
+          ? "spy-target"
+          : isGuess
+            ? "spy-guess-wrong"
+            : "";
+        const label = isTarget
+          ? isGuess
+            ? "signal ✓ guessed"
+            : "signal"
+          : isGuess
+            ? "imposter's guess"
+            : "";
+        return `<div class="spy-rs ${cls}"><img src="${spriteSrc(s)}" alt="" /><span>${label}</span></div>`;
+      })
+      .join("");
+    const guessNote = r.fled
+      ? ""
+      : r.imposterGuess === null
+        ? `<div class="spy-reveal-note">imposter didn't guess the signal</div>`
+        : "";
+
+    // Points: every participant, one chip each, mine outlined.
+    const pointChips = players
+      .map((p) => {
+        const pts = r.awarded[p.playerId] ?? 0;
+        const me = p.playerId === ctx.selfPlayerId;
+        const isImp = p.playerId === r.imposterId;
+        return `<span class="spy-chip${me ? " spy-me" : ""}">${escapeHtml(p.nickname)}${isImp ? " 🕵" : ""} <span class="${pts > 0 ? "spy-plus" : "spy-zero"}">+${pts}</span></span>`;
+      })
+      .join("");
 
     // Tally: votes per accused player.
     const counts = new Map<string, number>();
     for (const target of Object.values(r.votes)) {
       counts.set(target, (counts.get(target) ?? 0) + 1);
     }
-    const tallyText =
+    const tallyChips =
       counts.size > 0
         ? [...counts.entries()]
             .sort((a, b) => b[1] - a[1])
-            .map(([pid, n]) => `${escapeHtml(nickOf(pid))}: ${n}`)
-            .join(" · ")
-        : "nobody voted";
-
-    const scorers = Object.entries(r.awarded)
-      .map(([pid, pts]) => `${escapeHtml(nickOf(pid))} +${pts}`)
-      .join(" · ");
+            .map(
+              ([pid, n]) =>
+                `<span class="spy-chip">${escapeHtml(nickOf(pid))} ${n}×</span>`,
+            )
+            .join("")
+        : `<span class="spy-chip spy-zero">nobody voted</span>`;
 
     revealEl.innerHTML = `
-      <div class="spy-reveal-spy">
-        ${spyAvatar ? `<img src="${avatarSrc(spyAvatar)}" alt="" />` : ""}
-        <div class="spy-nick">${escapeHtml(r.spyNickname)} was the spy</div>
-      </div>
-      <div class="spy-reveal-syms">
-        <div class="spy-rs"><img src="${spriteSrc(r.targetSymbol)}" alt="" /><span>crew signal</span></div>
-        <div class="spy-rs"><img src="${spriteSrc(r.spySymbol)}" alt="" /><span>spy signal</span></div>
+      <div class="spy-reveal-imp">
+        ${impAvatar ? `<img src="${avatarSrc(impAvatar)}" alt="" />` : ""}
+        <span>${escapeHtml(r.imposterNickname)} was the imposter</span>
       </div>
       <div class="spy-reveal-verdict${verdictBad ? " spy-bad" : ""}">${escapeHtml(verdict)}</div>
-      ${tieNote}
-      <div class="spy-reveal-scored">votes — ${tallyText}</div>
-      <div class="spy-reveal-scored">${scorers ? `scored: ${scorers}` : "nobody scored"}</div>
+      <div class="spy-reveal-syms">${symsRow}</div>
+      ${guessNote}
+      <div class="spy-chips">${pointChips}</div>
+      <div class="spy-reveal-note">votes</div>
+      <div class="spy-chips">${tallyChips}</div>
     `;
   }
 
   function applyState(msg: StateMsg) {
     currentState = msg;
 
-    if (msg.round !== shownRound) {
-      shownRound = msg.round;
-      if (myVoteRound !== msg.round) myVoteTarget = null;
-      builtRevealKey = "";
-    }
-
     const phaseSecs = Math.max(
       0,
       Math.ceil((msg.phaseEndsAt - Date.now()) / 1000),
     );
     statusEl.textContent = statusLine(
-      `round ${msg.round}/${msg.totalRounds}`,
+      "signal imposter",
       msg.phase,
       formatRemaining(msg.deadlineAt),
     );
@@ -469,34 +560,44 @@ function createSpySignalMatchClient(
       ctx.setMatchScore(null);
     }
 
-    const mySecret = secretByRound.get(msg.round) ?? null;
-    const missedPeek = amParticipant && mySecret === null;
+    const haveSecret = secret !== null;
+    const imposter = amImposter();
+    const missedPeek = amParticipant && !haveSecret;
 
     buildSymbols(msg.candidates);
 
-    const showSymbols = msg.phase === "peek" || msg.phase === "discuss";
+    const showSymbols =
+      msg.phase === "peek" ||
+      msg.phase === "discuss" ||
+      (msg.phase === "vote" && imposter);
     symbolsEl.hidden = !showSymbols;
-    voteEl.hidden = msg.phase !== "vote";
+    symbolsEl.classList.toggle("spy-tappable", msg.phase === "vote" && imposter);
+    voteEl.hidden = !(msg.phase === "vote" && !imposter);
     revealEl.hidden = !(
       (msg.phase === "reveal" || msg.phase === "ended") &&
       msg.reveal !== null
     );
     countEl.hidden = !(msg.phase === "discuss" || msg.phase === "vote");
     if (!countEl.hidden) countEl.textContent = String(phaseSecs);
+    bannerEl.classList.toggle("spy-imp", imposter && msg.phase !== "reveal" && msg.phase !== "ended");
 
     if (msg.phase === "peek") {
       if (!amParticipant) {
         highlightSymbol(null);
         bannerEl.textContent = "PEEK TIME";
-        subEl.textContent = "players are memorizing their signals…";
-      } else if (mySecret) {
-        highlightSymbol(mySecret);
-        bannerEl.textContent = "YOUR SIGNAL";
-        subEl.textContent = "memorize your signal · don't show your phone!";
+        subEl.textContent = "players are memorizing the signal…";
+      } else if (imposter) {
+        highlightSymbol(null);
+        bannerEl.textContent = "YOU'RE THE IMPOSTER";
+        subEl.textContent = "the others see one of these — you don't. bluff!";
+      } else if (secret?.symbol) {
+        highlightSymbol(secret.symbol);
+        bannerEl.textContent = "THE SIGNAL";
+        subEl.textContent = "memorize it · one of you is bluffing";
       } else {
         highlightSymbol(null);
         bannerEl.textContent = "GET READY";
-        subEl.textContent = "your signal is coming…";
+        subEl.textContent = "your secret is coming…";
       }
     } else if (msg.phase === "discuss") {
       highlightSymbol(null); // nothing revealing on screen
@@ -505,33 +606,49 @@ function createSpySignalMatchClient(
         ? "listen in — who sounds shifty?"
         : missedPeek
           ? "you missed the peek — bluff your way through!"
-          : "Who saw a different signal?";
+          : imposter
+            ? "blend in — and work out which symbol they mean"
+            : "hint at the signal without naming it · who's bluffing?";
     } else if (msg.phase === "vote") {
-      buildVoteGrid();
-      updateVoteGrid(msg);
-      bannerEl.textContent = "VOTE!";
-      subEl.textContent = !amParticipant
-        ? "players are voting…"
-        : missedPeek
-          ? "you missed the peek — tap your best guess (or abstain)"
-          : "tap who you think the spy is · you can change it";
+      if (imposter) {
+        highlightSymbol(myGuess);
+        bannerEl.textContent = "GUESS THE SIGNAL";
+        subEl.textContent = "tap the symbol you think it was · you can change it";
+      } else {
+        buildVoteGrid();
+        updateVoteGrid(msg);
+        bannerEl.textContent = "VOTE!";
+        subEl.textContent = !amParticipant
+          ? "players are voting…"
+          : missedPeek
+            ? "you missed the peek — tap your best guess (or abstain)"
+            : "tap who you think the imposter is · you can change it";
+      }
     } else if (msg.phase === "reveal" || msg.phase === "ended") {
       buildReveal(msg);
       const r = msg.reveal;
       bannerEl.textContent = "THE REVEAL";
-      subEl.textContent =
-        msg.phase === "ended" ? "final scores are in!" : "next round soon…";
-      if (r && flashedRound !== msg.round) {
-        flashedRound = msg.round;
-        flash.flash(r.fled ? "SPY FLED!" : r.caught ? "SPY CAUGHT!" : "SPY WINS!");
+      // Scoring explainer in one line — "how does the scoring work" was
+      // the #1 playtest question.
+      const sc = scoring;
+      subEl.textContent = !r || r.fled
+        ? ""
+        : r.caught
+          ? `crew +${sc.groupBonus} · voted the imposter +${sc.rightVote} more · imposter 0 (+${sc.imposterGuess} if signal guessed)`
+          : `imposter +${sc.imposterEscape} (+${sc.imposterGuess} if signal guessed) · voted the imposter still +${sc.rightVote}`;
+      if (r && !flashed) {
+        flashed = true;
+        flash.flash(
+          r.fled ? "IMPOSTER FLED!" : r.caught ? "CAUGHT!" : "IMPOSTER WINS!",
+        );
       }
     }
   }
 
   function applySecret(msg: SecretMsg) {
     if (ctx.isSpectator) return;
-    if (!Number.isFinite(msg.round) || typeof msg.symbol !== "string") return;
-    secretByRound.set(msg.round, msg.symbol); // idempotent
+    if (typeof msg.imposter !== "boolean") return;
+    secret = { type: "secret", imposter: msg.imposter, symbol: msg.symbol ?? null };
   }
 
   return {
@@ -547,12 +664,13 @@ function createSpySignalMatchClient(
   };
 }
 
-const SpySignalClient: MiniGameClientDefinition = {
+const SignalImposterClient: MiniGameClientDefinition = {
   id: "spy-signal",
-  controlsHint: "peek your secret signal, talk it out loud, then vote the spy!",
-  createMatch: createSpySignalMatchClient,
+  controlsHint:
+    "everyone sees the signal except the imposter — talk it out, then vote!",
+  createMatch: createSignalImposterMatchClient,
 };
 
-registerMiniGameClient(SpySignalClient);
+registerMiniGameClient(SignalImposterClient);
 
-export default SpySignalClient;
+export default SignalImposterClient;

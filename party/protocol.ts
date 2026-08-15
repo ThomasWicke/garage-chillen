@@ -18,6 +18,52 @@ export type PublicPlayer = {
   avatarId: string;
   connected: boolean;
   isGm: boolean;
+  /** Set for server-side test bots (test lobbies only): the bot's current
+   *  input strategy. */
+  bot?: BotStrategy;
+};
+
+// ─── test lobbies ──────────────────────────────────────────────────────────
+//
+// A lobby whose code starts with "TEST" is a test lobby: the GM can add
+// server-side bots and toggle fast waits from a debug panel. Everything
+// else behaves exactly like a normal lobby.
+
+export function isTestLobbyCode(code: string): boolean {
+  return /^test/i.test(code);
+}
+
+/**
+ * How a test bot produces inputs. Bots have no per-game AI: they re-inject
+ * the human players' match messages under their own playerId.
+ *   mirror — every human match message, ~250ms later (a perfect shadow)
+ *   sloppy — ~70% of messages, 150–700ms later (falls behind, dies at
+ *            different times → exercises staggered placements)
+ *   idle   — sends nothing (the "player who does nothing" case)
+ */
+export type BotStrategy = "mirror" | "sloppy" | "idle";
+
+export const BOT_STRATEGIES: readonly BotStrategy[] = ["mirror", "sloppy", "idle"];
+
+/** GM → server debug controls (test lobbies only; ignored elsewhere). */
+export type TestControlMsg = {
+  scope: "lobby";
+  type: "test";
+} & (
+  | { action: "add-bot" }
+  | { action: "remove-bot"; playerId?: string }
+  | { action: "set-bot-strategy"; playerId: string; strategy: BotStrategy }
+  | { action: "set-fast"; fast: boolean }
+);
+
+/** Server → client: test-lobby status. Sent on identify and on change. */
+export type TestStateMsg = {
+  scope: "lobby";
+  type: "test-state";
+  enabled: boolean;
+  /** Fast mode: shorter intro / between / results waits, and tournament
+   *  matches between two bots auto-resolve instead of playing out. */
+  fast: boolean;
 };
 
 export type RoundResult = {
@@ -221,6 +267,7 @@ export type ClientToServer =
   | PauseSequenceMsg
   | ResumeSequenceMsg
   | EndSequenceMsg
+  | TestControlMsg
   | MiniGameMsg;
 
 export type ServerToClient =
@@ -229,5 +276,6 @@ export type ServerToClient =
   | EditRejectedMsg
   | AvailableMiniGamesMsg
   | SessionStateMsg
+  | TestStateMsg
   | LobbyStateMsg
   | MiniGameMsg;

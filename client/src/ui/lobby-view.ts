@@ -34,6 +34,9 @@ export type LobbyViewState = {
   editingNickname?: boolean;
   /** The current draft nickname while editing — preserved across rerenders. */
   nicknameDraft?: string;
+  /** Present in test lobbies (code starts with TEST): renders the debug
+   *  panel for the GM. */
+  test?: { fast: boolean; lastMinigameId: string | null };
 };
 
 export type LobbyViewHandlers = {
@@ -43,6 +46,12 @@ export type LobbyViewHandlers = {
   onResumeSequence: () => void;
   onEndSequence: () => void;
   onCycleAvatar: () => void;
+  // Test-lobby debug panel (GM only).
+  onTestAddBot: () => void;
+  onTestRemoveBot: () => void;
+  onTestCycleBot: (playerId: string) => void;
+  onTestToggleFast: () => void;
+  onTestReplay: () => void;
   /** Begin nickname edit (state-only; no wire effect). */
   onBeginEditNickname: () => void;
   /** Update the local draft nickname (state-only). */
@@ -79,10 +88,33 @@ export function renderLobbyView(
       <div class="gm-controls">
         ${renderControls(s, isSelfGm, connectedCount)}
       </div>
+      ${s.test ? renderTestPanel(s, s.test, isSelfGm) : ""}
     </div>
   `;
 
   const root = container;
+
+  // Test-lobby debug panel.
+  root
+    .querySelector<HTMLButtonElement>("[data-action='test-add-bot']")
+    ?.addEventListener("click", () => handlers.onTestAddBot());
+  root
+    .querySelector<HTMLButtonElement>("[data-action='test-remove-bot']")
+    ?.addEventListener("click", () => handlers.onTestRemoveBot());
+  root
+    .querySelector<HTMLButtonElement>("[data-action='test-fast']")
+    ?.addEventListener("click", () => handlers.onTestToggleFast());
+  root
+    .querySelector<HTMLButtonElement>("[data-action='test-replay']")
+    ?.addEventListener("click", () => handlers.onTestReplay());
+  if (isSelfGm) {
+    root.querySelectorAll<HTMLElement>("[data-bot-cycle]").forEach((el) => {
+      el.addEventListener("click", (e) => {
+        e.stopPropagation();
+        handlers.onTestCycleBot(el.dataset.botCycle!);
+      });
+    });
+  }
 
   // GM controls.
   const pickBtn = root.querySelector<HTMLButtonElement>("[data-action='pick-minigame']");
@@ -250,14 +282,52 @@ function renderSequencePanel(
   `;
 }
 
+/**
+ * Test-lobby debug panel. Bots are server-side players that mirror the
+ * humans' inputs (see party/bots.ts); "fast" shortens the between-game
+ * waits and coin-flips bot-vs-bot tournament matches.
+ */
+function renderTestPanel(
+  s: LobbyViewState,
+  test: NonNullable<LobbyViewState["test"]>,
+  isSelfGm: boolean,
+): string {
+  const botCount = s.players.filter((p) => p.bot).length;
+  if (!isSelfGm) {
+    return `<div class="test-panel"><span class="test-pill">test lobby</span><span class="test-info">${botCount} bot${botCount === 1 ? "" : "s"} · ${test.fast ? "fast" : "real"} waits</span></div>`;
+  }
+  const lastName = test.lastMinigameId
+    ? (s.availableMinigames.find((m) => m.id === test.lastMinigameId)?.displayName ??
+      test.lastMinigameId)
+    : null;
+  const canAct = !s.sequence; // mirrors the server: roster edits only when idle & no shuffle
+  return `
+    <div class="test-panel">
+      <div class="test-row">
+        <span class="test-pill">test lobby</span>
+        <span class="test-info">${botCount} bot${botCount === 1 ? "" : "s"}</span>
+        <button class="test-btn" data-action="test-remove-bot" ${botCount > 0 && canAct ? "" : "disabled"} title="remove last bot">− bot</button>
+        <button class="test-btn" data-action="test-add-bot" ${canAct ? "" : "disabled"} title="add a bot">+ bot</button>
+      </div>
+      <div class="test-row">
+        <button class="test-btn ${test.fast ? "on" : ""}" data-action="test-fast" title="short waits · bot-vs-bot matches auto-resolve">fast waits: ${test.fast ? "on" : "off"}</button>
+        <button class="test-btn" data-action="test-replay" ${lastName && canAct ? "" : "disabled"} title="start the last game again">again${lastName ? `: ${escapeHtml(lastName)}` : ""}</button>
+      </div>
+      <div class="test-hint">tap a bot's tag to cycle mirror → sloppy → idle</div>
+    </div>
+  `;
+}
+
 function renderPlayer(p: PublicPlayer, s: LobbyViewState): string {
   const isSelf = !!s.selfPlayerId && p.playerId === s.selfPlayerId;
   const editable = isSelf && s.editable;
+  const isSelfGm = !!s.selfPlayerId && s.gmPlayerId === s.selfPlayerId;
   const classes = ["player"];
   if (p.isGm) classes.push("gm");
   if (isSelf) classes.push("self");
   if (!p.connected) classes.push("disconnected");
   if (editable) classes.push("editable");
+  if (p.bot) classes.push("bot");
 
   const avatarEl = `<span class="avatar"><img src="${avatarSrc(p.avatarId)}" alt="" /></span>`;
 
@@ -302,6 +372,11 @@ function renderPlayer(p: PublicPlayer, s: LobbyViewState): string {
       <span class="badge">
         ${anyPoints ? `<span class="pts-tag">${pts} pts</span>` : ""}
         ${p.isGm ? `<img class="gm-star" src="${STAR_SRC}" alt="host" /><span class="host-tag">host</span>` : ""}
+        ${
+          p.bot
+            ? `<span class="bot-tag ${isSelfGm ? "clickable" : ""}" ${isSelfGm ? `data-bot-cycle="${escapeHtml(p.playerId)}"` : ""}>bot · ${p.bot}</span>`
+            : ""
+        }
         ${!p.connected ? `<span class="offline-tag">offline</span>` : ""}
       </span>
     </div>

@@ -90,6 +90,30 @@ export function ensureIdentity(): Identity {
   return fresh;
 }
 
+/**
+ * Testing aid: `?pid=someone` on a lobby URL plays as a throwaway identity
+ * instead of the one in localStorage — so several plain tabs (or the
+ * iframes in /test.html) can join the same lobby from ONE browser profile.
+ * Optional `&nick=` and `&avatar=`. Never persisted.
+ */
+export function identityFromUrl(): Identity | null {
+  const q = new URLSearchParams(window.location.search);
+  const pid = q.get("pid")?.trim();
+  if (!pid) return null;
+  let hash = 0;
+  for (const ch of pid) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
+  const requestedAvatar = q.get("avatar");
+  const avatarId =
+    requestedAvatar && AVATARS.some((a) => a.id === requestedAvatar)
+      ? requestedAvatar
+      : AVATARS[hash % AVATARS.length].id;
+  return {
+    playerId: `url-${pid}`,
+    nickname: (q.get("nick") ?? pid).slice(0, 16),
+    avatarId,
+  };
+}
+
 export function avatarSrc(avatarId: string): string {
   return AVATARS.find((a) => a.id === avatarId)?.src ?? AVATARS[0].src;
 }

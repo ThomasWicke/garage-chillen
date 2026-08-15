@@ -38,6 +38,9 @@ import type {
 
 const INTRO_MS = 5_000;
 const BETWEEN_MS = 5_000;
+/** Test-lobby fast mode: keep waits just long enough to see the bracket. */
+const FAST_INTRO_MS = 2_000;
+const FAST_BETWEEN_MS = 2_000;
 /** Scene visible but simulation frozen for this long before GO. */
 const WARMUP_MS = 3_000;
 const MATCH_FORCE_GRACE_MS = 5_000;
@@ -65,9 +68,12 @@ function createTournamentSession(ctx: GamemodeContext): GamemodeSession {
   }
   const lobbyIds = lobbyPlayers.map((p) => p.playerId);
   const bracket = buildBracket(lobbyIds);
+  const fast = ctx.test?.fast === true;
+  const introMs = fast ? FAST_INTRO_MS : INTRO_MS;
+  const betweenMs = fast ? FAST_BETWEEN_MS : BETWEEN_MS;
 
   let phase: Phase = "intro";
-  let phaseEndsAt = Date.now() + INTRO_MS;
+  let phaseEndsAt = Date.now() + introMs;
   let currentRound = 0;
   let phaseTimer: ReturnType<typeof setTimeout> | null = null;
   const activeMatches = new Map<string, ActiveMatch>();
@@ -176,6 +182,17 @@ function createTournamentSession(ctx: GamemodeContext): GamemodeSession {
         if (survivor) {
           recordMatchResult(bracket, m.matchId, survivor);
         }
+        continue;
+      }
+      // Test-lobby fast mode: two bots would only mirror the same human
+      // inputs at each other (stalemate until the deadline) — coin-flip
+      // the match instead so the human's bracket keeps moving.
+      if (fast && aRec.isBot && bRec.isBot) {
+        recordMatchResult(
+          bracket,
+          m.matchId,
+          Math.random() < 0.5 ? aRec.playerId : bRec.playerId,
+        );
         continue;
       }
       const participants: MiniGamePlayer[] = [aRec, bRec];
@@ -305,7 +322,7 @@ function createTournamentSession(ctx: GamemodeContext): GamemodeSession {
 
   function enterBetweenPhase() {
     phase = "between";
-    phaseEndsAt = Date.now() + BETWEEN_MS;
+    phaseEndsAt = Date.now() + betweenMs;
     setEveryoneClicker(true);
     broadcastBracketState();
     clearPhaseTimer();
@@ -314,7 +331,7 @@ function createTournamentSession(ctx: GamemodeContext): GamemodeSession {
       if (ended) return;
       currentRound++;
       startCurrentRoundMatches();
-    }, BETWEEN_MS);
+    }, betweenMs);
   }
 
   function enterCompletePhase() {
@@ -370,14 +387,14 @@ function createTournamentSession(ctx: GamemodeContext): GamemodeSession {
 
   // ─── kick off ────────────────────────────────────────────────────────────
 
-  // Intro: show the bracket for INTRO_MS, then start round-0 matches.
+  // Intro: show the bracket for introMs, then start round-0 matches.
   setEveryoneClicker(true);
   broadcastBracketState();
   phaseTimer = setTimeout(() => {
     phaseTimer = null;
     if (ended) return;
     startCurrentRoundMatches();
-  }, INTRO_MS);
+  }, introMs);
 
   return {
     tick: tickFn,
@@ -386,6 +403,12 @@ function createTournamentSession(ctx: GamemodeContext): GamemodeSession {
       if (!am || am.ended) return;
       if (!am.participantIds.includes(playerId)) return;
       am.session.onMessage(playerId, msg);
+    },
+    matchIdFor(playerId) {
+      for (const am of activeMatches.values()) {
+        if (!am.ended && am.participantIds.includes(playerId)) return am.matchId;
+      }
+      return null;
     },
     onGamemodeMessage(_playerId, _msg) {
       // No gamemode-level inbound messages yet (could be used for "ready up").

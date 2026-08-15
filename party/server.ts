@@ -9,6 +9,7 @@
 // the gamemode wrapper (party/gamemodes/). The lobby just dispatches.
 
 import type * as Party from "partykit/server";
+import { BotManager } from "./bots";
 import { PlayerRegistry, type PlayerRecord } from "./identity";
 import { allMiniGames, getMiniGame } from "./minigames";
 import "./gamemodes"; // self-register tournament etc.
@@ -18,21 +19,25 @@ import type {
   GamemodeSession,
   MiniGamePlayer,
 } from "./gamemodes/types";
-import type {
-  AvailableMiniGamesMsg,
-  ClientToServer,
-  EditRejectedMsg,
-  IdentifyMsg,
-  LobbyState,
-  LobbyStateMsg,
-  MiniGameInfo,
-  MiniGameMsg,
-  PlayerListMsg,
-  RoundResult,
-  SequencePublicState,
-  ServerToClient,
-  SessionStateMsg,
-  WelcomeMsg,
+import {
+  BOT_STRATEGIES,
+  isTestLobbyCode,
+  type AvailableMiniGamesMsg,
+  type ClientToServer,
+  type EditRejectedMsg,
+  type IdentifyMsg,
+  type LobbyState,
+  type LobbyStateMsg,
+  type MiniGameInfo,
+  type MiniGameMsg,
+  type PlayerListMsg,
+  type RoundResult,
+  type SequencePublicState,
+  type ServerToClient,
+  type SessionStateMsg,
+  type TestControlMsg,
+  type TestStateMsg,
+  type WelcomeMsg,
 } from "./protocol";
 
 const GM_GRACE_MS = 30_000;
@@ -50,6 +55,11 @@ const SEQUENCE_AUTOSTART_MS = 7_000;
 /** How long the final-standings podium stays up after a shuffle run ends
  *  (GM can dismiss earlier). */
 const SESSION_RESULTS_AUTO_DISMISS_MS = 20_000;
+/** Test-lobby fast mode equivalents (see protocol.ts TestStateMsg). */
+const FAST_ROUND_RESULTS_AUTO_DISMISS_MS = 3_000;
+const FAST_SEQUENCE_AUTOSTART_MS = 3_000;
+const FAST_SESSION_RESULTS_AUTO_DISMISS_MS = 6_000;
+const MAX_BOTS = 15;
 
 type SequenceState = {
   /** Original (full) shuffle plan; unchanged for the run. Used to compute
@@ -89,7 +99,19 @@ export default class LobbyServer implements Party.Server {
   private sessionScores: Record<string, number> = {};
   private sequence: SequenceState | null = null;
 
-  constructor(readonly room: Party.Room) {}
+  // ─── test lobby (code starts with TEST) ──────────────────────────────────
+  private readonly testMode: boolean;
+  /** Fast mode: shorter waits, bot-vs-bot tournament matches auto-resolve.
+   *  Defaults on — the waits were tuned in real playtests already; solo
+   *  testing is about the games. */
+  private testFast = true;
+  private bots = new BotManager((botId, humanMatchId, msg) =>
+    this.injectBotMessage(botId, humanMatchId, msg),
+  );
+
+  constructor(readonly room: Party.Room) {
+    this.testMode = isTestLobbyCode(room.id);
+  }
 
   onConnect(_conn: Party.Connection) {
     // Wait for `identify` before adding to registry.
@@ -177,6 +199,9 @@ export default class LobbyServer implements Party.Server {
         if (!isGm) return;
         this.endSequence();
         this.broadcastLobbyState();
+      } else if (msg.type === "test") {
+        if (!isGm || !this.testMode) return;
+        this.handleTestControl(msg);
       }
       return;
     }
@@ -187,11 +212,90 @@ export default class LobbyServer implements Party.Server {
       if (!player) return;
       if (msg.target === "match" && typeof msg.matchId === "string") {
         this.active.session.onMatchMessage(player.playerId, msg.matchId, msg);
+        // Test bots shadow the humans' match inputs (see bots.ts).
+        if (this.testMode) this.bots.onHumanMatchMessage(msg.matchId, msg);
       } else if (msg.target === "gamemode") {
         this.active.session.onGamemodeMessage?.(player.playerId, msg);
       }
       return;
     }
+  }
+
+  // ─── test lobby controls ─────────────────────────────────────────────────
+
+  private handleTestControl(msg: TestControlMsg) {
+    switch (msg.action) {
+      case "add-bot": {
+        // Roster changes only in the calm lobby — mid-round the gamemode
+        // already has its participant list.
+        if (this.state !== "idle") return;
+        if (this.bots.list().length >= MAX_BOTS) return;
+        const rec = this.bots.create();
+        this.registry.addBot(rec);
+        this.broadcastPlayerList();
+        return;
+      }
+      case "remove-bot": {
+        if (this.state !== "idle") return;
+        const rec = this.bots.remove(
+          typeof msg.playerId === "string" ? msg.playerId : undefined,
+        );
+        if (!rec) return;
+        this.registry.remove(rec.playerId);
+        delete this.sessionScores[rec.playerId];
+        this.broadcastPlayerList();
+        return;
+      }
+      case "set-bot-strategy": {
+        if (
+          typeof msg.playerId !== "string" ||
+          !BOT_STRATEGIES.includes(msg.strategy)
+        ) {
+          return;
+        }
+        if (this.bots.setStrategy(msg.playerId, msg.strategy)) {
+          this.broadcastPlayerList();
+        }
+        return;
+      }
+      case "set-fast": {
+        this.testFast = msg.fast === true;
+        this.broadcastTestState();
+        return;
+      }
+    }
+  }
+
+  /** A scheduled bot mirror fires: route it through the same gamemode path
+   *  a real socket message takes, into the bot's own match. */
+  private injectBotMessage(
+    botId: string,
+    humanMatchId: string,
+    msg: { type: string; [k: string]: unknown },
+  ) {
+    if (this.state !== "playing" || !this.active?.session || this.active.ended) {
+      return;
+    }
+    if (!this.registry.getByPlayerId(botId)?.isBot) return;
+    const session = this.active.session;
+    const matchId = session.matchIdFor
+      ? session.matchIdFor(botId)
+      : humanMatchId;
+    if (!matchId) return; // bot has no active match (bye / eliminated)
+    session.onMatchMessage(botId, matchId, msg);
+  }
+
+  private buildTestStateMsg(): TestStateMsg {
+    return {
+      scope: "lobby",
+      type: "test-state",
+      enabled: this.testMode,
+      fast: this.testFast,
+    };
+  }
+
+  private broadcastTestState() {
+    this.room.broadcast(JSON.stringify(this.buildTestStateMsg()));
   }
 
   onClose(conn: Party.Connection) {
@@ -276,6 +380,7 @@ export default class LobbyServer implements Party.Server {
       type: "session-state",
       scores: this.sessionScores,
     });
+    if (this.testMode) this.send<TestStateMsg>(sender, this.buildTestStateMsg());
     // Player list BEFORE lobby state: on a "playing" state the client
     // immediately mounts the gamemode scene from its current player list —
     // if that list is still empty (mid-round refresh / late join), every
@@ -434,6 +539,7 @@ export default class LobbyServer implements Party.Server {
       },
       log: (...args) =>
         console.log(`[${gm.id}/${def.id}]`, ...args),
+      ...(this.testMode ? { test: { fast: this.testFast } } : {}),
     };
 
     const session = gm.createSession(ctx);
@@ -475,6 +581,7 @@ export default class LobbyServer implements Party.Server {
     } catch {
       /* ignore */
     }
+    this.bots.clearPending();
 
     const fullResult: RoundResult = {
       minigameId: this.active.minigameId,
@@ -492,9 +599,11 @@ export default class LobbyServer implements Party.Server {
     // Set dismissAt BEFORE the first broadcast — otherwise clients briefly
     // render a countdown from the previous round's stale timestamp.
     if (this.resultsAutoDismissTimer) clearTimeout(this.resultsAutoDismissTimer);
-    const dismissMs = this.sequence
-      ? ROUND_RESULTS_AUTO_DISMISS_SHUFFLE_MS
-      : ROUND_RESULTS_AUTO_DISMISS_MS;
+    const dismissMs = this.isFast()
+      ? FAST_ROUND_RESULTS_AUTO_DISMISS_MS
+      : this.sequence
+        ? ROUND_RESULTS_AUTO_DISMISS_SHUFFLE_MS
+        : ROUND_RESULTS_AUTO_DISMISS_MS;
     this.resultsDismissAt = Date.now() + dismissMs;
     this.broadcastLobbyState();
     const sessionMsg: SessionStateMsg = {
@@ -531,6 +640,7 @@ export default class LobbyServer implements Party.Server {
       }
       this.active = null;
     }
+    this.bots.clearPending();
     this.state = "idle";
     this.lastResult = null;
     this.broadcastLobbyState();
@@ -611,13 +721,16 @@ export default class LobbyServer implements Party.Server {
     if (this.sequence.autoStartTimer) {
       clearTimeout(this.sequence.autoStartTimer);
     }
-    this.sequence.autoStartAt = Date.now() + SEQUENCE_AUTOSTART_MS;
+    const autoStartMs = this.isFast()
+      ? FAST_SEQUENCE_AUTOSTART_MS
+      : SEQUENCE_AUTOSTART_MS;
+    this.sequence.autoStartAt = Date.now() + autoStartMs;
     this.sequence.autoStartTimer = setTimeout(() => {
       if (!this.sequence) return;
       this.sequence.autoStartTimer = null;
       this.sequence.autoStartAt = null;
       this.advanceSequence();
-    }, SEQUENCE_AUTOSTART_MS);
+    }, autoStartMs);
     this.broadcastLobbyState();
   }
 
@@ -667,12 +780,15 @@ export default class LobbyServer implements Party.Server {
       return;
     }
     this.state = "session-results";
-    this.sessionResultsDismissAt = Date.now() + SESSION_RESULTS_AUTO_DISMISS_MS;
+    const dismissMs = this.isFast()
+      ? FAST_SESSION_RESULTS_AUTO_DISMISS_MS
+      : SESSION_RESULTS_AUTO_DISMISS_MS;
+    this.sessionResultsDismissAt = Date.now() + dismissMs;
     this.broadcastLobbyState();
     if (this.sessionResultsTimer) clearTimeout(this.sessionResultsTimer);
     this.sessionResultsTimer = setTimeout(
       () => this.transitionToIdle(),
-      SESSION_RESULTS_AUTO_DISMISS_MS,
+      dismissMs,
     );
   }
 
@@ -710,11 +826,16 @@ export default class LobbyServer implements Party.Server {
     return this.sequence.paused;
   }
 
+  private isFast(): boolean {
+    return this.testMode && this.testFast;
+  }
+
   private lobbyPlayersForMinigame(): MiniGamePlayer[] {
     return this.registry.connected().map<MiniGamePlayer>((p) => ({
       playerId: p.playerId,
       nickname: p.nickname,
       avatarId: p.avatarId,
+      ...(p.isBot ? { isBot: true } : {}),
     }));
   }
 
@@ -782,10 +903,17 @@ export default class LobbyServer implements Party.Server {
   }
 
   private broadcastPlayerList() {
+    const players = this.registry.toPublic(this.gmPlayerId);
+    if (this.testMode) {
+      for (const p of players) {
+        const strategy = this.bots.strategyOf(p.playerId);
+        if (strategy) p.bot = strategy;
+      }
+    }
     const msg: PlayerListMsg = {
       scope: "presence",
       type: "player-list",
-      players: this.registry.toPublic(this.gmPlayerId),
+      players,
       gmPlayerId: this.gmPlayerId,
       gmGraceUntil: this.gmGraceUntil,
     };

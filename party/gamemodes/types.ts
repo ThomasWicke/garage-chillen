@@ -57,6 +57,9 @@ export type GamemodeContext = {
    *  off for actively-playing). */
   setClickerAvailable: (playerId: string, available: boolean) => void;
   log: (...args: unknown[]) => void;
+  /** Present in test lobbies. `fast`: shorten intro/between waits and
+   *  auto-resolve matches whose participants are all bots. */
+  test?: { fast: boolean };
 };
 
 export type GamemodeSession = {
@@ -80,6 +83,10 @@ export type GamemodeSession = {
    *  gamemode should re-send whatever per-player state the client needs to
    *  rebuild its scene (current gamemode state + active match welcomes). */
   onPlayerRejoined?: (playerId: string) => void;
+  /** Which active match this player is currently a participant of, or null
+   *  (bye, eliminated, spectating). Used by test bots to mirror human
+   *  inputs into the bot's OWN match. Default: null. */
+  matchIdFor?: (playerId: string) => string | null;
   cleanup: () => void;
 };
 

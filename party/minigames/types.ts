@@ -11,6 +11,9 @@ export type MiniGamePlayer = {
   playerId: string;
   nickname: string;
   avatarId: string;
+  /** Server-side test bot (test lobbies only). Mini-games can ignore this;
+   *  gamemodes use it e.g. to auto-resolve bot-vs-bot matches in fast mode. */
+  isBot?: boolean;
 };
 
 export type MatchEndResult = {

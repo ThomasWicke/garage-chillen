@@ -27,6 +27,8 @@ import type {
 // Roster intro is short — the warm-up phase that follows shows the actual
 // game scene behind a 3-2-1-GO overlay, which is the real "get ready" time.
 const INTRO_MS = 3_000;
+/** Test-lobby fast mode. */
+const FAST_INTRO_MS = 1_500;
 /** Scene visible but simulation frozen for this long before GO. */
 const WARMUP_MS = 3_000;
 const MATCH_FORCE_GRACE_MS = 5_000;
@@ -42,8 +44,9 @@ function createLastManStandingSession(
     throw new Error("Last Man Standing requires at least 1 player");
   }
 
+  const introMs = ctx.test?.fast ? FAST_INTRO_MS : INTRO_MS;
   let phase: Phase = "intro";
-  let phaseEndsAt: number | null = Date.now() + INTRO_MS;
+  let phaseEndsAt: number | null = Date.now() + introMs;
   let phaseTimer: ReturnType<typeof setTimeout> | null = null;
   let matchSession: MatchSession | null = null;
   let participantsAtStart: MiniGamePlayer[] = lobbyPlayers;
@@ -207,7 +210,7 @@ function createLastManStandingSession(
     phaseTimer = null;
     if (ended) return;
     startMatch();
-  }, INTRO_MS);
+  }, introMs);
 
   return {
     tick: tickFn,
@@ -218,6 +221,12 @@ function createLastManStandingSession(
       // sees, so an ungated outsider could win the round).
       if (!participantsAtStart.some((p) => p.playerId === playerId)) return;
       matchSession.onMessage(playerId, msg);
+    },
+    matchIdFor(playerId) {
+      if (phase !== "playing" || matchEnded || !matchSession) return null;
+      return participantsAtStart.some((p) => p.playerId === playerId)
+        ? MATCH_ID
+        : null;
     },
     onPlayerLeft(playerId) {
       disconnectedIds.add(playerId);

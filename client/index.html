@@ -247,7 +247,9 @@
         font-weight: 700;
         font-variant-numeric: tabular-nums;
         line-height: 1;
+        white-space: nowrap;
       }
+      .session-toolbar .toolbar-right { flex-shrink: 0; }
       .session-toolbar .toolbar-dot {
         width: 8px; height: 8px;
         border-radius: 50%;
@@ -397,6 +399,61 @@
         display: grid;
         grid-template-columns: 1fr 1fr;
         gap: 8px;
+      }
+
+      /* Test-lobby debug panel (code starts with TEST). Deliberately loud
+         so nobody mistakes a test lobby for a real one. */
+      .test-panel {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        padding: 10px 12px;
+        border: 1px dashed #ff9f43;
+        border-radius: 12px;
+        background: rgba(255, 159, 67, 0.07);
+      }
+      .test-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+      .test-pill {
+        font-size: 10px;
+        letter-spacing: 2px;
+        text-transform: uppercase;
+        color: #ff9f43;
+        font-weight: 700;
+      }
+      .test-info { font-size: 12px; color: var(--muted); flex: 1; }
+      .test-btn {
+        font-size: 12px;
+        padding: 6px 10px;
+        border-radius: 6px;
+        border: 1px solid #ff9f43;
+        background: transparent;
+        color: #ff9f43;
+        letter-spacing: 0.5px;
+      }
+      .test-btn.on { background: #ff9f43; color: var(--accent-fg); }
+      .test-hint { font-size: 11px; color: var(--muted); }
+      .lobby .player .bot-tag {
+        font-size: 10px;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        color: #ff9f43;
+        border: 1px solid rgba(255, 159, 67, 0.5);
+        border-radius: 4px;
+        padding: 1px 5px;
+      }
+      .lobby .player .bot-tag.clickable { cursor: pointer; }
+      .lobby .player.bot .avatar img { filter: saturate(0.6); }
+      .session-toolbar .toolbar-abort {
+        font-size: 14px;
+        min-width: 40px;
+        min-height: 32px;
+        padding: 2px 10px;
+        margin-left: 4px;
+        border-radius: 8px;
+        border: 1px solid #ff9f43;
+        background: transparent;
+        color: #ff9f43;
+        line-height: 1.4;
       }
 
       /* Sequence (Shuffle) status panel inside the lobby. */

@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>garage-chillen · multi-phone harness</title>
+    <style>
+      :root {
+        --bg: #0a0a14;
+        --panel: #14141e;
+        --fg: #d8d8e8;
+        --muted: #7a7a92;
+        --test: #ff9f43;
+        --border: #2a2a3a;
+      }
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        height: 100%;
+        background: var(--bg);
+        color: var(--fg);
+        font-family: system-ui, -apple-system, sans-serif;
+        font-size: 13px;
+      }
+      body { display: flex; flex-direction: column; }
+      .bar {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 12px;
+        border-bottom: 1px dashed var(--test);
+        background: var(--panel);
+        flex-wrap: wrap;
+      }
+      .bar .pill {
+        font-size: 10px;
+        letter-spacing: 2px;
+        text-transform: uppercase;
+        color: var(--test);
+        font-weight: 700;
+      }
+      .bar label { color: var(--muted); display: inline-flex; gap: 6px; align-items: center; }
+      .bar input, .bar select {
+        background: var(--bg);
+        color: var(--fg);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 5px 8px;
+        font: inherit;
+        text-transform: uppercase;
+      }
+      .bar input { width: 90px; letter-spacing: 2px; }
+      .bar button {
+        font: inherit;
+        padding: 5px 12px;
+        border-radius: 6px;
+        border: 1px solid var(--test);
+        background: transparent;
+        color: var(--test);
+        cursor: pointer;
+      }
+      .bar button.primary { background: var(--test); color: var(--bg); font-weight: 700; }
+      .bar .hint { color: var(--muted); margin-left: auto; }
+      .bar .hint code { color: var(--fg); }
+      .frames {
+        flex: 1;
+        display: flex;
+        gap: 12px;
+        padding: 12px;
+        overflow: auto;
+        align-items: flex-start;
+      }
+      .phone {
+        flex: 0 0 auto;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .phone .label {
+        color: var(--muted);
+        font-size: 11px;
+        letter-spacing: 1px;
+        display: flex;
+        justify-content: space-between;
+      }
+      .phone .label button {
+        font: inherit;
+        font-size: 10px;
+        background: none;
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        color: var(--muted);
+        cursor: pointer;
+        padding: 1px 6px;
+      }
+      .phone iframe {
+        width: 390px;
+        height: 720px;
+        border: 1px solid var(--border);
+        border-radius: 18px;
+        background: var(--bg);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="bar">
+      <span class="pill">multi-phone harness</span>
+      <label>lobby <input id="code" maxlength="8" value="TEST" /></label>
+      <label>phones
+        <select id="count">
+          <option>1</option><option>2</option><option selected>3</option>
+          <option>4</option><option>5</option><option>6</option>
+        </select>
+      </label>
+      <button class="primary" id="open">open</button>
+      <button id="reload">reload all</button>
+      <span class="hint">
+        each phone is its own throwaway identity (<code>?pid=</code>) — the
+        first one to connect is host. Add bots from the host's test panel.
+      </span>
+    </div>
+    <div class="frames" id="frames"></div>
+    <script>
+      const params = new URLSearchParams(location.search);
+      const codeEl = document.getElementById("code");
+      const countEl = document.getElementById("count");
+      const framesEl = document.getElementById("frames");
+      if (params.get("code")) codeEl.value = params.get("code").toUpperCase();
+      if (params.get("n")) countEl.value = params.get("n");
+
+      function frameSrc(code, i) {
+        const q = new URLSearchParams({
+          pid: `harness-${i}`,
+          nick: `Tab ${i}`,
+        });
+        return `/lobby/${encodeURIComponent(code)}?${q}`;
+      }
+
+      function open() {
+        const code = codeEl.value.trim().toUpperCase() || "TEST";
+        const n = Number(countEl.value) || 1;
+        history.replaceState(null, "", `?code=${encodeURIComponent(code)}&n=${n}`);
+        framesEl.innerHTML = "";
+        for (let i = 1; i <= n; i++) {
+          const wrap = document.createElement("div");
+          wrap.className = "phone";
+          const label = document.createElement("div");
+          label.className = "label";
+          label.innerHTML = `<span>Tab ${i}${i === 1 ? " · connects first" : ""}</span>`;
+          const btn = document.createElement("button");
+          btn.textContent = "reload";
+          const frame = document.createElement("iframe");
+          // Stagger so Tab 1 reliably identifies first (= host).
+          setTimeout(() => { frame.src = frameSrc(code, i); }, (i - 1) * 600);
+          frame.setAttribute("allow", "autoplay");
+          btn.addEventListener("click", () => { frame.src = frameSrc(code, i); });
+          label.appendChild(btn);
+          wrap.appendChild(label);
+          wrap.appendChild(frame);
+          framesEl.appendChild(wrap);
+        }
+      }
+
+      document.getElementById("open").addEventListener("click", open);
+      document.getElementById("reload").addEventListener("click", open);
+      codeEl.addEventListener("keydown", (e) => { if (e.key === "Enter") open(); });
+      open();
+    </script>
+  </body>
+</html>

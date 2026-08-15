@@ -11,6 +11,10 @@ export type PlayerRecord = {
   avatarId: string;
   connectionId: string | null; // null when disconnected; set when connected
   joinedAt: number; // epoch ms; used for GM auto-promotion (longest-connected wins)
+  /** Server-side test bot (test lobbies only). Bots hold a synthetic
+   *  connectionId so they count as connected lobby players, but they never
+   *  become GM and never receive wire messages. */
+  isBot?: boolean;
 };
 
 const NICKNAME_MAX = 16;
@@ -52,6 +56,26 @@ export class PlayerRegistry {
     this.players.set(args.playerId, record);
     this.connToPlayer.set(args.connectionId, args.playerId);
     return { record, isNew: true };
+  }
+
+  /** Add a server-side test bot. Nickname/avatar go through the same
+   *  uniqueness rules as a joining human. */
+  addBot(args: { playerId: string; nickname: string; avatarId: string }): PlayerRecord {
+    const record: PlayerRecord = {
+      playerId: args.playerId,
+      nickname: this.uniqueNickname(args.nickname, args.playerId),
+      avatarId: this.uniqueAvatar(args.avatarId, args.playerId),
+      connectionId: `bot:${args.playerId}`,
+      joinedAt: Date.now(),
+      isBot: true,
+    };
+    this.players.set(args.playerId, record);
+    this.connToPlayer.set(record.connectionId!, args.playerId);
+    return record;
+  }
+
+  bots(): PlayerRecord[] {
+    return this.all().filter((p) => p.isBot);
   }
 
   /**
@@ -121,9 +145,12 @@ export class PlayerRegistry {
     return this.all().filter((p) => p.connectionId !== null);
   }
 
-  /** Longest-connected player who is currently connected. Used for GM auto-promotion. */
+  /** Longest-connected player who is currently connected. Used for GM
+   *  auto-promotion. Bots never inherit the GM role. */
   longestConnected(excludePlayerId?: string): PlayerRecord | null {
-    const candidates = this.connected().filter((p) => p.playerId !== excludePlayerId);
+    const candidates = this.connected().filter(
+      (p) => p.playerId !== excludePlayerId && !p.isBot,
+    );
     if (candidates.length === 0) return null;
     candidates.sort((a, b) => a.joinedAt - b.joinedAt);
     return candidates[0];
