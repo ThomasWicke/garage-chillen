@@ -589,44 +589,34 @@ function createSignalImposterMatchClient(
       if (!amParticipant) {
         highlightSymbol(null);
         bannerEl.textContent = "PEEK TIME";
-        subEl.textContent = "players are memorizing the signal…";
+        subEl.textContent = "";
       } else if (imposter) {
         highlightSymbol(null);
         bannerEl.textContent = "YOU'RE THE IMPOSTER";
-        subEl.textContent = "the others see one of these — you don't. bluff!";
+        subEl.textContent = "the others see one of these";
       } else if (secret?.symbol) {
         highlightSymbol(secret.symbol);
         bannerEl.textContent = "THE SIGNAL";
-        subEl.textContent = "memorize it · one of you is bluffing";
+        subEl.textContent = "";
       } else {
         highlightSymbol(null);
         bannerEl.textContent = "GET READY";
-        subEl.textContent = "your secret is coming…";
+        subEl.textContent = "";
       }
     } else if (msg.phase === "discuss") {
       highlightSymbol(null); // nothing revealing on screen
       bannerEl.textContent = "TALK!";
-      subEl.textContent = !amParticipant
-        ? "listen in — who sounds shifty?"
-        : missedPeek
-          ? "you missed the peek — bluff your way through!"
-          : imposter
-            ? "blend in — and work out which symbol they mean"
-            : "hint at the signal without naming it · who's bluffing?";
+      subEl.textContent = amParticipant && missedPeek ? "you missed the peek" : "";
     } else if (msg.phase === "vote") {
       if (imposter) {
         highlightSymbol(myGuess);
         bannerEl.textContent = "GUESS THE SIGNAL";
-        subEl.textContent = "tap the symbol you think it was · you can change it";
+        subEl.textContent = "";
       } else {
         buildVoteGrid();
         updateVoteGrid(msg);
         bannerEl.textContent = "VOTE!";
-        subEl.textContent = !amParticipant
-          ? "players are voting…"
-          : missedPeek
-            ? "you missed the peek — tap your best guess (or abstain)"
-            : "tap who you think the imposter is · you can change it";
+        subEl.textContent = amParticipant && missedPeek ? "you missed the peek" : "";
       }
     } else if (msg.phase === "reveal" || msg.phase === "ended") {
       buildReveal(msg);
@@ -638,8 +628,8 @@ function createSignalImposterMatchClient(
       subEl.textContent = !r || r.fled
         ? ""
         : r.caught
-          ? `crew +${sc.groupBonus} · voted the imposter +${sc.rightVote} more · imposter 0 (+${sc.imposterGuess} if signal guessed)`
-          : `imposter +${sc.imposterEscape} (+${sc.imposterGuess} if signal guessed) · voted the imposter still +${sc.rightVote}`;
+          ? `crew +${sc.groupBonus} · right vote +${sc.rightVote} · imposter +${sc.imposterGuess} if signal guessed`
+          : `imposter +${sc.imposterEscape} (+${sc.imposterGuess} signal) · right vote +${sc.rightVote}`;
       if (r && !flashed) {
         flashed = true;
         flash.flash(

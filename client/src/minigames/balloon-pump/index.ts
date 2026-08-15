@@ -237,7 +237,7 @@ function createBalloonPumpMatchClient(
       buttonsEl.style.display = "none";
     }
     buildGrid();
-    bannerEl.textContent = "pump it up — bank before it pops!";
+    bannerEl.textContent = "";
   }
 
   function applyState(msg: StateMsg) {
@@ -266,11 +266,11 @@ function createBalloonPumpMatchClient(
             ? "POPPED · +0 this round"
             : `banked +${me.roundPoints}`;
       } else if (me.status === "popped") {
-        ownLabelEl.textContent = "POPPED! · watch the others";
+        ownLabelEl.textContent = "POPPED!";
       } else if (me.status === "banked") {
-        ownLabelEl.textContent = `banked +${me.roundPoints} · watch the others`;
+        ownLabelEl.textContent = `banked +${me.roundPoints}`;
       } else {
-        ownLabelEl.textContent = "PUMP to inflate · BANK to keep";
+        ownLabelEl.textContent = "";
       }
       const canAct = msg.phase === "pumping" && me.status === "pumping" && !me.left;
       pumpBtn.disabled = !canAct;

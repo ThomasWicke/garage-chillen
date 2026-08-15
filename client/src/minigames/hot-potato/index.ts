@@ -116,8 +116,8 @@ function createHotPotatoMatchClient(
     if (msg.phase === "elim-pause" && msg.lastEliminated) {
       bannerEl.textContent = `💥 ${msg.lastEliminated.nickname} got burned`;
     } else if (msg.phase === "live") {
-      if (!iAmAlive) bannerEl.textContent = "spectating · keep watching";
-      else if (iAmHolder) bannerEl.textContent = "🔥 you have it · TAP TO PASS";
+      if (!iAmAlive) bannerEl.textContent = "spectating";
+      else if (iAmHolder) bannerEl.textContent = "🔥 TAP TO PASS";
       else bannerEl.textContent = "stay cool…";
     } else {
       bannerEl.textContent = "";

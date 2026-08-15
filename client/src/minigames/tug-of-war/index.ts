@@ -194,7 +194,7 @@ function createTugOfWarMatchClient(
       roleHint = `${msg.players.p1.nickname} vs ${msg.players.p2.nickname}`;
     } else {
       pullBtn.hidden = false;
-      roleHint = "mash PULL!";
+      roleHint = "";
     }
     statusEl.textContent = roleHint;
   }

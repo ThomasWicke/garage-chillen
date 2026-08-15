@@ -327,7 +327,7 @@ function createHotBidMatchClient(ctx: MatchClientContext): MatchClientSession {
     if (built) return; // welcome is replayed on reconnect — guard double-build
     built = true;
     buildRoster();
-    bannerEl.textContent = "sizing up the first card…";
+    bannerEl.textContent = "get ready…";
   }
 
   function nickOf(pid: string): string {
@@ -434,13 +434,13 @@ function createHotBidMatchClient(ctx: MatchClientContext): MatchClientSession {
       bannerEl.textContent = ctx.isSpectator
         ? "secret bids incoming…"
         : myLocked
-          ? "bid locked · waiting for the reveal"
-          : "set your secret bid, then LOCK IN";
+          ? "locked in"
+          : "";
     } else if (msg.phase === "reveal") {
       bannerEl.textContent = msg.reveal?.discarded
         ? "nobody wanted it!"
         : msg.reveal?.tie
-          ? "tie at the top · random winner!"
+          ? "tie · coin flip!"
           : "the bids are in!";
     } else {
       bannerEl.textContent = "auction over";

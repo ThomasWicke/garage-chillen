@@ -192,8 +192,8 @@ function createOddOneOutMatchClient(
 
     if (msg.phase === "play") {
       if (!amPlayer) bannerEl.textContent = "spectating";
-      else if (iAmLocked) bannerEl.textContent = "oops! wrong tile — locked out";
-      else bannerEl.textContent = "tap the odd tile!";
+      else if (iAmLocked) bannerEl.textContent = "wrong tile — locked out";
+      else bannerEl.textContent = "GO!";
     } else if (msg.phase === "reveal") {
       const nick = msg.roundWinner
         ? players.find((p) => p.playerId === msg.roundWinner)?.nickname

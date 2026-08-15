@@ -308,7 +308,7 @@ function createTenSecondsMatchClient(
       if (ctx.isSpectator) {
         bannerEl.textContent = visible ? "they're counting…" : "…heads are counting!";
       } else if (locked) {
-        bannerEl.textContent = "locked in — wait for the others…";
+        bannerEl.textContent = "locked in";
       } else {
         bannerEl.textContent = visible ? "count along…" : "…keep counting!";
       }
@@ -322,7 +322,7 @@ function createTenSecondsMatchClient(
       timerEl.textContent = String(Math.max(1, Math.ceil(untilStart / 1000)));
       dotEl.hidden = true;
       lockedEl.hidden = true;
-      bannerEl.textContent = `round ${round} · stop at exactly 10 seconds`;
+      bannerEl.textContent = `round ${round}`;
     } else {
       timerEl.hidden = true;
       dotEl.hidden = true;

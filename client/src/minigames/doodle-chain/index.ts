@@ -450,7 +450,7 @@ function createDoodleChainMatchClient(
     amParticipant =
       !ctx.isSpectator && players.some((p) => p.playerId === ctx.selfPlayerId);
     bannerEl.textContent = "DOODLE CHAIN";
-    subEl.textContent = "write → draw → guess → draw…";
+    subEl.textContent = "";
   }
 
   // ─── canvas sizing ──────────────────────────────────────────────────────
@@ -658,14 +658,14 @@ function createDoodleChainMatchClient(
     });
     actionsEl.hidden = false;
     actionsEl.innerHTML = submitted
-      ? `<button class="dc-btn" type="button" disabled>✓ sent — waiting…</button>`
+      ? `<button class="dc-btn" type="button" disabled>✓ SENT</button>`
       : `<button class="dc-btn" type="button" data-action="submit" ${t.mine.text.trim() ? "" : "disabled"}>${t.kind === "prompt" ? "SUBMIT" : "GUESS"}</button>`;
     if (t.kind === "prompt") {
       bannerEl.textContent = submitted ? "WAITING…" : "WRITE SOMETHING TO DRAW";
-      subEl.textContent = submitted ? "the others are still writing" : "a thing, a scene, a silly sentence";
+      subEl.textContent = "";
     } else {
       bannerEl.textContent = submitted ? "WAITING…" : "WHAT IS THIS?";
-      subEl.textContent = `${nickOf(t.input?.by ?? null)} drew this${submitted ? "" : " — type your guess"}`;
+      subEl.textContent = `by ${nickOf(t.input?.by ?? null)}`;
     }
   }
 
@@ -678,13 +678,11 @@ function createDoodleChainMatchClient(
     if (toolsEl.childElementCount === 0) buildTools();
     actionsEl.hidden = !amParticipant;
     actionsEl.innerHTML = submitted
-      ? `<button class="dc-btn" type="button" disabled>✓ done — waiting…</button>`
+      ? `<button class="dc-btn" type="button" disabled>✓ DONE</button>`
       : `<button class="dc-btn" type="button" data-action="done">DONE</button>`;
     const text = t.input?.kind === "text" ? t.input.text : "?";
     bannerEl.textContent = submitted ? "WAITING…" : `draw: ${text}`;
-    subEl.textContent = submitted
-      ? "the others are still drawing"
-      : `from ${nickOf(t.input?.by ?? null)} · no letters or numbers!`;
+    subEl.textContent = `from ${nickOf(t.input?.by ?? null)}`;
   }
 
   function buildAlbumView(st: StateMsg) {

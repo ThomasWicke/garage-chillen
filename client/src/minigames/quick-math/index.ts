@@ -228,9 +228,9 @@ function createQuickMathMatchClient(
         bannerEl.textContent = "get ready…";
         btns.forEach((b) => (b.disabled = true));
       } else if (myPick !== null || msg.answeredIds.includes(ctx.selfPlayerId)) {
-        bannerEl.textContent = "locked in — waiting…";
+        bannerEl.textContent = "locked in";
       } else {
-        bannerEl.textContent = "tap the answer!";
+        bannerEl.textContent = "GO!";
         renderLock(); // re-arm buttons once GO flips live on
       }
       updateBoard(msg.scores);

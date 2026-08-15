@@ -78,6 +78,7 @@ function createWhoAmIMatchClient(
   custom: boolean,
   ctx: MatchClientContext,
 ): MatchClientSession {
+  void custom; // both variants render identically; the server drives the write phase
   ctx.container.innerHTML = `
     <div class="wai-root" id="wai-root">
       <style>
@@ -273,7 +274,7 @@ function createWhoAmIMatchClient(
       <div class="wai-sub" id="wai-sub"></div>
       <div class="wai-form" id="wai-form" hidden></div>
       <div class="wai-me" id="wai-me" hidden></div>
-      <div id="wai-turn" hidden><button class="wai-turn-btn" type="button" data-action="next-turn">your turn — ask, then NEXT PLAYER ▸</button></div>
+      <div id="wai-turn" hidden><button class="wai-turn-btn" type="button" data-action="next-turn">NEXT PLAYER ▸</button></div>
       <div class="wai-grid" id="wai-grid" hidden></div>
       <div class="wai-results" id="wai-results" hidden></div>
     </div>
@@ -320,9 +321,7 @@ function createWhoAmIMatchClient(
     if (built) return;
     built = true;
     bannerEl.textContent = "WHO AM I?";
-    subEl.textContent = custom
-      ? "first: give the player next to you an identity"
-      : "everyone else can see who you are…";
+    subEl.textContent = "";
   }
 
   // ─── write (custom) ─────────────────────────────────────────────────────
@@ -412,7 +411,7 @@ function createWhoAmIMatchClient(
     meEl.classList.toggle("wai-turn", myTurn);
     turnEl.hidden = !myTurn;
     if (!amParticipant) {
-      meEl.innerHTML = `<div class="wai-me-txt"><div class="wai-me-lbl">spectating</div><div class="wai-me-id">watch the room guess</div></div>`;
+      meEl.innerHTML = `<div class="wai-me-txt"><div class="wai-me-lbl">spectating</div><div class="wai-me-id">…</div></div>`;
       return;
     }
     meEl.innerHTML = `
@@ -522,7 +521,7 @@ function createWhoAmIMatchClient(
           </div>`;
         })
         .join("") +
-      `<div class="wai-note">${st.solvedOrder.length}/${players.length} guessed · order = placement</div>`;
+      `<div class="wai-note">${st.solvedOrder.length}/${players.length} guessed</div>`;
   }
 
   // ─── state ──────────────────────────────────────────────────────────────
@@ -575,9 +574,7 @@ function createWhoAmIMatchClient(
       buildForm();
       updateForm(st);
       bannerEl.textContent = submitted ? "WAITING…" : "GIVE AN IDENTITY";
-      subEl.textContent = submitted
-        ? "the others are still writing"
-        : "a person, a character, a thing — the room has to know it";
+      subEl.textContent = "";
       refreshClock();
     } else if (play) {
       (document.activeElement as HTMLElement | null)?.blur?.();
@@ -593,7 +590,7 @@ function createWhoAmIMatchClient(
       bannerEl.textContent = !amParticipant
         ? "THE ROOM IS GUESSING"
         : meSolved
-          ? "YOU'RE DONE — HELP THE OTHERS"
+          ? `SOLVED #${st.solvedOrder.indexOf(ctx.selfPlayerId) + 1}`
           : myTurn
             ? "YOUR TURN — ASK A YES/NO QUESTION"
             : st.turnId
@@ -601,11 +598,7 @@ function createWhoAmIMatchClient(
               : "ASK YES/NO QUESTIONS";
       subEl.textContent = st.lastOneId
         ? `${st.lastOneId === ctx.selfPlayerId ? "you're" : nickOf(st.lastOneId) + " is"} the last one — 30s!`
-        : amParticipant
-          ? myTurn
-            ? "got a yes? keep going · then pass with NEXT PLAYER · guessed right? the room taps ✓"
-            : "answer out loud · when someone guesses right, tap ✓ on their tile"
-          : "";
+        : "";
     } else if (results) {
       buildResults(st);
       statusEl.textContent = statusLine("who am i?", "results");

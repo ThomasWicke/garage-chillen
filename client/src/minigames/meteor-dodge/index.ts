@@ -210,7 +210,7 @@ function createMeteorDodgeMatchClient(
   }
 
   function applyWelcome(msg: WelcomeMsg) {
-    statusEl.textContent = "drag left / right to dodge";
+    statusEl.textContent = "";
     youMarkerUntil = Date.now() + 7_000;
     buildScene(msg);
   }
@@ -298,7 +298,7 @@ function createMeteorDodgeMatchClient(
     statusEl.textContent = !mine
       ? statusLine("spectating", `${alive}/${total} alive`, clock)
       : statusLine(
-          mine.alive ? null : "you got hit · keep watching",
+          mine.alive ? null : "you got hit",
           `${alive}/${total} alive`,
           clock,
         );

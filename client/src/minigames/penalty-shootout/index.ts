@@ -304,12 +304,12 @@ function createPenaltyShootoutMatchClient(
         bannerEl.textContent = "⚽ YOU SHOOT";
         subEl.textContent = pickedZone
           ? `shooting ${pickedZone} · ${secs}s`
-          : `where do you SHOOT? ${secs}s`;
+          : `${secs}s`;
       } else if (iKeep) {
         bannerEl.textContent = "🧤 YOU'RE THE KEEPER";
         subEl.textContent = pickedZone
           ? `diving ${pickedZone} · ${secs}s`
-          : `where do you DIVE? ${secs}s`;
+          : `${secs}s`;
       } else {
         bannerEl.textContent = `${shooterNick} shoots · ${keeperNick} defends`;
         subEl.textContent = `picking… ${secs}s`;

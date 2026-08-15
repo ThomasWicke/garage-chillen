@@ -330,7 +330,7 @@ function createCategoriesMatchClient(
     built = true;
     letterEl.textContent = letter;
     bannerEl.textContent = "CATEGORIES";
-    subEl.textContent = `4 things starting with ${letter}`;
+    subEl.textContent = "";
   }
 
   // ─── write phase ────────────────────────────────────────────────────────
@@ -412,7 +412,7 @@ function createCategoriesMatchClient(
     if (key !== actionsBuiltFor) {
       actionsBuiltFor = key;
       actionsEl.innerHTML = iAmDone
-        ? `<button class="cat-btn cat-done" type="button" disabled>✓ done — waiting…</button>`
+        ? `<button class="cat-btn cat-done" type="button" disabled>✓ DONE</button>`
         : `<button class="cat-btn" type="button" data-action="stop" ${canStop ? "" : "disabled"}>STOP!</button>`;
     }
   }
@@ -636,22 +636,15 @@ function createCategoriesMatchClient(
       bannerEl.textContent = iAmDone ? "WAITING…" : "GO — 4 answers!";
       subEl.textContent = msg.stopperId
         ? `${nickOf(msg.stopperId)} stopped — hurry!`
-        : amParticipant
-          ? `all four filled? tap STOP to end the round`
-          : "players are writing…";
-      doneLineEl.textContent =
-        msg.doneIds.length > 0
-          ? `done: ${msg.doneIds.map((id) => nickOf(id)).join(", ")}`
-          : "";
+        : "";
+      doneLineEl.textContent = "";
     } else if (review) {
       // Blur any input so the keyboard goes away.
       (document.activeElement as HTMLElement | null)?.blur?.();
       buildReview(msg);
       buildScores(msg);
       bannerEl.textContent = "REVIEW";
-      subEl.textContent = amParticipant
-        ? "argue it out · tap an answer to strike it"
-        : "the room is checking the answers…";
+      subEl.textContent = "";
       if (ctx.isHost() && amParticipant) {
         actionsEl.hidden = false;
         if (actionsBuiltFor !== "host-next") {

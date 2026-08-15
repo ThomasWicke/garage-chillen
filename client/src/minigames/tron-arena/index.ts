@@ -233,7 +233,7 @@ function createTronArenaMatchClient(
     const clock = formatRemaining(msg.deadlineAt);
     if (me) {
       statusEl.textContent = statusLine(
-        me.alive ? null : "you crashed · keep watching",
+        me.alive ? null : "you crashed",
         clock,
       );
     } else {
@@ -256,9 +256,7 @@ function createTronArenaMatchClient(
   }
 
   function applyWelcome(msg: WelcomeMsg) {
-    statusEl.textContent = ctx.isSpectator
-      ? "spectating"
-      : "tap left/right to turn";
+    statusEl.textContent = ctx.isSpectator ? "spectating" : "";
     // Keep the tag visible through warm-up and the first seconds of play.
     youMarkerUntil = Date.now() + 7_000;
     buildScene(msg);

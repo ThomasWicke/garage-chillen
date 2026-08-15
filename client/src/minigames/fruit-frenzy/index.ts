@@ -281,7 +281,7 @@ function createFruitFrenzyMatchClient(
     statusEl.innerHTML = stunned
       ? `${escapeHtml(statusLine(formatRemaining(endsAt)))} · <span class="ff-stun-tag">STUNNED</span>`
       : escapeHtml(
-          statusLine(formatRemaining(endsAt), "tap fruit · dodge bombs"),
+          statusLine(formatRemaining(endsAt)),
         );
   }
 

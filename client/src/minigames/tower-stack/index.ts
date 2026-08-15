@@ -351,7 +351,7 @@ function createTowerStackMatchClient(
   }
 
   function applyWelcome(msg: WelcomeMsg) {
-    statusEl.textContent = "tap anywhere to drop the block";
+    statusEl.textContent = "";
     buildScene(msg);
   }
 
@@ -405,10 +405,7 @@ function createTowerStackMatchClient(
     if (watchingOther && viewedPid) {
       overlayEl.hidden = false;
       const nick = nickByPid.get(viewedPid) ?? "?";
-      overlayEl.textContent =
-        me && me.done
-          ? `you topped out · watching leaders (${nick})`
-          : `spectating · watching ${nick}`;
+      overlayEl.textContent = `watching ${nick}`;
     } else {
       overlayEl.hidden = true;
     }
@@ -419,7 +416,7 @@ function createTowerStackMatchClient(
         ? "spectating"
         : me.done
           ? "you topped out"
-          : "tap to drop",
+          : null,
       clock,
     );
   }

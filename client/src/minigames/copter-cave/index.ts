@@ -179,7 +179,7 @@ function createCopterCaveMatchClient(
   }
 
   function applyWelcome(msg: WelcomeMsg) {
-    statusEl.textContent = "hold to rise · release to fall";
+    statusEl.textContent = "";
     youMarkerUntil = Date.now() + 7_000;
     buildScene(msg);
   }
@@ -264,7 +264,7 @@ function createCopterCaveMatchClient(
     statusEl.textContent = !mine
       ? statusLine("spectating", `${alive}/${total} alive`, clock)
       : statusLine(
-          mine.alive ? null : "you crashed · keep watching",
+          mine.alive ? null : "you crashed",
           `${alive}/${total} alive`,
           clock,
         );

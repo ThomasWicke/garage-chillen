@@ -83,7 +83,7 @@ function createColorTapMatchClient(
   function applyWelcome(msg: WelcomeMsg) {
     maxStrikes = msg.maxStrikes;
     buildButtons(msg.colors);
-    infoEl.textContent = "match the color";
+    infoEl.textContent = "";
   }
 
   function applyState(msg: StateMsg) {

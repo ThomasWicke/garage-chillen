@@ -225,7 +225,7 @@ function createDontLetGoMatchClient(
     // Addendum rule 4: re-send current contact state every 100ms.
     resendTimer = setInterval(() => reportContact(true), 100);
   } else {
-    bannerEl.textContent = "spectating · who lets go first?";
+    bannerEl.textContent = "spectating";
   }
 
   // ---- rendering -----------------------------------------------------------
@@ -294,7 +294,7 @@ function createDontLetGoMatchClient(
             stageEl.classList.remove("dlg-shake");
             void stageEl.offsetWidth;
             stageEl.classList.add("dlg-shake");
-            bannerEl.textContent = "you're out — watch the rest";
+            bannerEl.textContent = "you're out";
             bannerEl.classList.remove("dlg-urgent");
           } else {
             flash.flash(`💀 ${nickOf(pid)} let go`);

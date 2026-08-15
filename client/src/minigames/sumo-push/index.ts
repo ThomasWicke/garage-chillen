@@ -14,7 +14,7 @@ import type {
   OpacityComp,
 } from "kaplay";
 import { avatarSrc } from "../../identity";
-import { formatRemaining, statusLine } from "../clock";
+import { formatRemaining } from "../clock";
 import { createMatchFlash } from "../flash";
 import { registerMiniGameClient } from "../registry";
 import type {
@@ -220,10 +220,7 @@ function createSumoPushMatchClient(
     }
     lastScores = { ...msg.scores };
 
-    statusEl.textContent = statusLine(
-      role === "spectator" ? null : "drag & release to lunge",
-      formatRemaining(msg.deadlineAt),
-    );
+    statusEl.textContent = formatRemaining(msg.deadlineAt);
   }
 
   function applyWelcome(msg: WelcomeMsg) {
@@ -234,7 +231,7 @@ function createSumoPushMatchClient(
     statusEl.textContent =
       role === "spectator"
         ? `${msg.players.p1.nickname} vs ${msg.players.p2.nickname}`
-        : "drag & release to lunge";
+        : "";
     buildScene(msg);
   }
 

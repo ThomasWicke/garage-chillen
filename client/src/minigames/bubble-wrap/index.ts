@@ -9,7 +9,7 @@
 // (welcome replay + next state) restores the sheet exactly.
 
 import { avatarSrc } from "../../identity";
-import { formatRemaining, statusLine } from "../clock";
+import { formatRemaining } from "../clock";
 import { registerMiniGameClient } from "../registry";
 import type {
   MatchClientContext,
@@ -262,7 +262,7 @@ function createBubbleWrapMatchClient(
     } else if (msg.graceEndsAt > 0) {
       bannerEl.innerHTML = `<span class="bw-grace-tag">someone finished — ${graceLeft}s left!</span>`;
     } else if (amPlayer) {
-      bannerEl.textContent = statusLine("pop 'em all!", "swipe works too");
+      bannerEl.textContent = "pop 'em all!";
     }
   }
 

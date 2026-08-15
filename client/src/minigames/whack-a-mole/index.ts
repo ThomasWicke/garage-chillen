@@ -163,7 +163,7 @@ function createWhackAMoleMatchClient(
   }
 
   function applyWelcome(msg: WelcomeMsg) {
-    statusEl.textContent = "tap moles to score";
+    statusEl.textContent = "";
     buildScene(msg);
   }
 

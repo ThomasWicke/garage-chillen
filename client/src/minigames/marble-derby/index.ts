@@ -458,7 +458,7 @@ function createMarbleDerbyMatchClient(
   }
 
   function applyWelcome(msg: WelcomeMsg) {
-    statusEl.textContent = "pick your racer!";
+    statusEl.textContent = "";
     buildScene(msg);
   }
 
@@ -500,7 +500,7 @@ function createMarbleDerbyMatchClient(
           ? "betting open"
           : mine !== undefined
             ? `your pick: ${racerLabel(racers[mine] ?? "?")}`
-            : "tap a racer to bet";
+            : "no bet yet";
       bannerEl.innerHTML = `${raceTag(msg.raceIndex)}${escapeHtml(pickTxt)} · <span class="mdby-count">${secsLeft}s</span> · ${betCount}/${players.length} bets in`;
     } else if (msg.phase === "race") {
       bannerEl.innerHTML = `${raceTag(msg.raceIndex)}they're off!`;
@@ -544,9 +544,9 @@ function createMarbleDerbyMatchClient(
     statusEl.textContent = statusLine(
       ctx.isSpectator ? "spectating" : null,
       msg.phase === "betting"
-        ? "place your bet"
+        ? null
         : msg.phase === "race"
-          ? "no touching — watch the marbles"
+          ? null
           : "payouts",
     );
   }

@@ -156,7 +156,7 @@ function createFlappyBirdMatchClient(
   }
 
   function applyWelcome(msg: WelcomeMsg) {
-    statusEl.textContent = "tap anywhere to flap";
+    statusEl.textContent = "";
     // Keep the tag visible through warm-up and the first seconds of play.
     youMarkerUntil = Date.now() + 7_000;
     buildScene(msg);
@@ -223,7 +223,7 @@ function createFlappyBirdMatchClient(
     const clock = formatRemaining(msg.deadlineAt);
     statusEl.textContent = !myBird
       ? statusLine("spectating", clock)
-      : statusLine(myBird.alive ? null : "you died · keep watching", clock);
+      : statusLine(myBird.alive ? null : "you died", clock);
 
     // Float the "YOU" tag above the own bird while it's active.
     if (youMarker) {

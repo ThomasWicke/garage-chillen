@@ -226,7 +226,7 @@ function createLightCyclesMatchClient(
     statusEl.textContent =
       role === "spectator"
         ? `${msg.players.p1.nickname} vs ${msg.players.p2.nickname}`
-        : "tap left/right to turn";
+        : "";
     // Keep the tag visible through warm-up and the first seconds of play.
     youMarkerUntil = Date.now() + 7_000;
     buildScene(msg);
