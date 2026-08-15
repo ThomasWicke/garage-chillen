@@ -1,5 +1,6 @@
-// Penalty Shootout — tournament 1v1 mind-game. 6 alternating rounds (each
-// player shoots 3 times). Each round both players secretly pick a zone
+// Penalty Shootout — tournament 1v1 mind-game. 6 rounds in halves: p1
+// shoots rounds 1-3, then p2 shoots rounds 4-6. Each round both players
+// secretly pick a zone
 // (left / center / right): the shooter aims, the keeper dives. Goal iff
 // the zones differ. Most goals after 6 rounds wins; still level → sudden
 // death in pairs (max 6 extra rounds), then null winner.
@@ -82,13 +83,18 @@ function createPenaltyShootoutMatch(ctx: MatchContext): MatchSession {
     ended: false,
   };
 
-  // Odd rounds: p1 shoots. Even rounds: p2 shoots. Strict alternation
-  // through regulation and sudden death.
+  // Regulation is played in HALVES (playtest feedback — alternating every
+  // round made the role flip-flop confusing): rounds 1-3 p1 shoots, rounds
+  // 4-6 p2 shoots. Sudden death alternates per round so each extra pair
+  // gives both players a shot.
   function shooter(): typeof p1 {
+    if (state.round <= REG_ROUNDS) {
+      return state.round <= REG_ROUNDS / 2 ? p1 : p2;
+    }
     return state.round % 2 === 1 ? p1 : p2;
   }
   function keeper(): typeof p1 {
-    return state.round % 2 === 1 ? p2 : p1;
+    return shooter() === p1 ? p2 : p1;
   }
 
   ctx.broadcast({

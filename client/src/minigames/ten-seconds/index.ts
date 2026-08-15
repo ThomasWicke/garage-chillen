@@ -42,6 +42,7 @@ type StateMsg = {
   rounds: number;
   phaseUntil: number;
   roundStartAt: number;
+  serverNow: number;
   tappedIds: string[];
   totals: Record<string, number>;
   results: RoundRow[] | null;
@@ -96,6 +97,9 @@ function createTenSecondsMatchClient(
           color: #f2f2f5;
           font-variant-numeric: tabular-nums;
         }
+        /* Pre-round 3…2…1 uses the same element, tinted so the roll into
+           0.00 reads as one continuous moment. */
+        .ts-timer.ts-arm-count { color: #abdd64; }
         .ts-dot {
           width: 22px;
           height: 22px;
@@ -225,6 +229,12 @@ function createTenSecondsMatchClient(
   let roundStartAt = 0;
   let tappedIds = new Set<string>();
   let deadlineAt = 0;
+  /** Server-minus-local clock offset (smoothed). All countdown math uses
+   *  serverNow() so a skewed phone clock can't freeze or jump the timer. */
+  let clockOffset: number | null = null;
+  function serverNow(): number {
+    return Date.now() + (clockOffset ?? 0);
+  }
 
   /** Optimistic lock so the button freezes on touchstart, before the next
    *  state broadcast confirms. Reset whenever a new round's count starts. */
@@ -282,12 +292,13 @@ function createTenSecondsMatchClient(
     resultsEl.hidden = !showResults;
 
     if (phase === "counting" && roundStartAt > 0) {
-      const elapsed = Date.now() - roundStartAt;
+      const elapsed = serverNow() - roundStartAt;
       const visible = elapsed < visibleMs;
       timerEl.hidden = locked || !visible;
       dotEl.hidden = locked || visible;
       lockedEl.hidden = !locked;
       if (!timerEl.hidden) {
+        timerEl.classList.remove("ts-arm-count");
         timerEl.textContent = (Math.max(0, elapsed) / 1000).toFixed(2);
       }
       if (ctx.isSpectator) {
@@ -297,23 +308,38 @@ function createTenSecondsMatchClient(
       } else {
         bannerEl.textContent = visible ? "count along…" : "…keep counting!";
       }
+    } else if (phase === "arm" && roundStartAt > 0) {
+      // Big visible countdown INTO the round — the abrupt start was the #1
+      // confusion in playtests. Reuses the timer element so 3…2…1 rolls
+      // seamlessly into 0.00.
+      const untilStart = roundStartAt - serverNow();
+      timerEl.hidden = false;
+      timerEl.classList.add("ts-arm-count");
+      timerEl.textContent = String(Math.max(1, Math.ceil(untilStart / 1000)));
+      dotEl.hidden = true;
+      lockedEl.hidden = true;
+      bannerEl.textContent = `round ${round} · stop at exactly 10 seconds`;
     } else {
       timerEl.hidden = true;
       dotEl.hidden = true;
       lockedEl.hidden = true;
-      if (phase === "arm") {
-        bannerEl.textContent = `round ${round} · get ready — stop at exactly 10 seconds`;
-      } else if (phase === "results") {
+      if (phase === "results") {
         bannerEl.textContent = `round ${round} results`;
       }
     }
 
-    // STOP button: only for participants, only while counting.
-    const showBtn = isParticipant && phase === "counting";
+    // STOP button: visible through arm + counting so the layout never jumps
+    // mid-round (it used to appear at GO, shoving the timer upward).
+    const showBtn = isParticipant && (phase === "counting" || phase === "arm");
     stopBtn.hidden = !showBtn;
     if (showBtn) {
-      stopBtn.disabled = locked;
-      stopBtn.textContent = locked ? "LOCKED IN" : "STOP";
+      if (phase === "arm") {
+        stopBtn.disabled = true;
+        stopBtn.textContent = "GET READY…";
+      } else {
+        stopBtn.disabled = locked;
+        stopBtn.textContent = locked ? "LOCKED IN" : "STOP";
+      }
     }
   }
 
@@ -353,6 +379,11 @@ function createTenSecondsMatchClient(
   }
 
   function applyState(msg: StateMsg) {
+    // Clock-skew estimate (smoothed; first sample taken as-is).
+    if (Number.isFinite(msg.serverNow)) {
+      const raw = msg.serverNow - Date.now();
+      clockOffset = clockOffset === null ? raw : clockOffset * 0.9 + raw * 0.1;
+    }
     phase = msg.phase;
     round = msg.round;
     rounds = msg.rounds ?? rounds;

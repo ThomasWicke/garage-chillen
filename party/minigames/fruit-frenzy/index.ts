@@ -35,7 +35,7 @@ const SPAWN_MAX_MS = 900;
 const SPAWN_MIN_COUNT = 1;
 const SPAWN_MAX_COUNT = 3;
 const BOMB_CHANCE = 0.15;
-const BOMB_PENALTY = 3;
+const BOMB_PENALTY = 5;
 const STUN_MS = 1_500;
 
 // Crew sprite keys — the client maps these to @kaplayjs/crew data URIs.

@@ -1,4 +1,4 @@
-// Marble Derby — last-man-standing FFA betting spectacle. Nobody steers
+// Marble Race — last-man-standing FFA betting spectacle. Nobody steers
 // anything: six fixed crew-character marbles (the "horses") drop through a
 // plinko peg board; everyone bets on a racer, watches the chaos live, and
 // scores points when their pick places. Two races; most points wins.
@@ -62,6 +62,9 @@ type RaceResult = {
   raceIndex: number;
   winner: number;
   second: number;
+  /** Full finish order, racer indices best→worst — so every bettor can see
+   *  exactly where their pick landed, not just 1st/2nd. */
+  order: number[];
 };
 
 type State = {
@@ -282,7 +285,17 @@ function createMarbleDerbyMatch(ctx: MatchContext): MatchSession {
     dropMarbles();
   }
 
-  function finishRace(winner: number, second: number) {
+  /** Full finish order: crossers in crossing order, then everyone else by
+   *  current board position (lower = further along = better). */
+  function fullOrder(): number[] {
+    const crossed = [...state.crossedOrder];
+    const rest = leaderOrder().filter((i) => !crossed.includes(i));
+    return [...crossed, ...rest];
+  }
+
+  function finishRace(order: number[]) {
+    const winner = order[0];
+    const second = order[1];
     const bets = state.bets[state.raceIndex];
     for (const [pid, racer] of bets) {
       if (racer === winner) {
@@ -291,7 +304,7 @@ function createMarbleDerbyMatch(ctx: MatchContext): MatchSession {
         state.points.set(pid, (state.points.get(pid) ?? 0) + SECOND_POINTS);
       }
     }
-    state.lastResult = { raceIndex: state.raceIndex, winner, second };
+    state.lastResult = { raceIndex: state.raceIndex, winner, second, order };
     state.phase = "results";
     state.phaseEndsAt = Date.now() + RESULTS_MS;
   }
@@ -411,23 +424,16 @@ function createMarbleDerbyMatch(ctx: MatchContext): MatchSession {
       } else if (state.phase === "race") {
         stepPhysics(dt);
         if (state.crossedOrder.length >= 2) {
-          finishRace(state.crossedOrder[0], state.crossedOrder[1]);
+          finishRace(fullOrder());
         } else if (
           state.crossedOrder.length === 1 &&
           now - state.winnerCrossedAt >= SECOND_PLACE_WINDOW_MS
         ) {
-          // Nobody else crossed in the window: 2nd = lowest remaining marble.
-          const winner = state.crossedOrder[0];
-          const second =
-            leaderOrder().find((i) => i !== winner) ?? (winner + 1) % NUM_RACERS;
-          finishRace(winner, second);
+          // Nobody else crossed in the window: rest rank by board position.
+          finishRace(fullOrder());
         } else if (now >= state.raceCapAt) {
-          // Hard cap: leader (lowest marble) decides; 2nd = next lowest.
-          const order = leaderOrder();
-          const winner = state.crossedOrder[0] ?? order[0];
-          const second =
-            order.find((i) => i !== winner) ?? (winner + 1) % NUM_RACERS;
-          finishRace(winner, second);
+          // Hard cap: leader (lowest marble) decides the whole order.
+          finishRace(fullOrder());
         }
       } else if (state.phase === "results") {
         if (now >= state.phaseEndsAt) {
@@ -468,8 +474,10 @@ function createMarbleDerbyMatch(ctx: MatchContext): MatchSession {
 }
 
 const MarbleDerbyDefinition: MiniGameDefinition = {
+  // id stays "marble-derby" (wire/registry identity); the display name is
+  // what players see.
   id: "marble-derby",
-  displayName: "Marble Derby",
+  displayName: "Marble Race",
   gamemode: "last-man-standing",
   matchSize: 16,
   minPlayers: 2,

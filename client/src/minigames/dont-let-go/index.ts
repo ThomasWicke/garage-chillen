@@ -3,9 +3,8 @@
 // dot at all times. Contact state is reported to the server as an idempotent
 // set: an edge message on change PLUS a re-send every 100ms (addendum rule 4).
 //
-// The game lies to you: server-scheduled "temptation" prompts render as
-// convincing overlay banners/buttons — they are NOT interactive (pointer
-// events pass through); the only thing lifting your finger does is kill you.
+// The dot accelerates relentlessly — the endgame is losing a physical race,
+// not falling for a trick.
 //
 // Ring states: green while in contact, amber while the grace window burns,
 // red flash + shake on elimination. Spectators just watch the dot + roster.
@@ -37,11 +36,8 @@ type StateMsg = {
   type: "state";
   dot: { x: number; y: number };
   alive: string[];
-  temptation: { text: string; style: string; until: number } | null;
   deadlineAt: number;
 };
-
-const TEMPT_STYLES = new Set(["bonus", "shield", "call", "switch", "alert"]);
 
 function createDontLetGoMatchClient(
   ctx: MatchClientContext,
@@ -99,29 +95,6 @@ function createDontLetGoMatchClient(
         opacity: 0; pointer-events: none; z-index: 4; }
       .dlg-redflash.dlg-show { animation: dlg-red .5s ease-out; }
       @keyframes dlg-red { 0% { opacity: .55; } 100% { opacity: 0; } }
-      /* Temptations: convincing but 100% fake. Pointer events pass through. */
-      .dlg-tempt { position: absolute; left: 0; right: 0; top: 16%;
-        display: flex; justify-content: center; pointer-events: none; z-index: 5; }
-      .dlg-tempt[hidden] { display: none; }
-      .dlg-tempt-inner { max-width: 86%; padding: 14px 20px; border-radius: 14px;
-        font-size: 17px; font-weight: 800; text-align: center;
-        box-shadow: 0 6px 24px rgba(0, 0, 0, .55);
-        animation: dlg-tempt-in .2s ease-out; }
-      @keyframes dlg-tempt-in { from { transform: translateY(-14px) scale(.9);
-        opacity: 0; } to { transform: none; opacity: 1; } }
-      .dlg-t-bonus .dlg-tempt-inner { background: linear-gradient(#34d399, #059669);
-        color: #04120c; animation: dlg-tempt-in .2s ease-out,
-        dlg-blink .5s steps(2) infinite .2s; }
-      .dlg-t-shield .dlg-tempt-inner { background: linear-gradient(#a78bfa, #7c3aed);
-        color: #f5f3ff; }
-      .dlg-t-alert .dlg-tempt-inner { background: linear-gradient(#f87171, #dc2626);
-        color: #fff; }
-      .dlg-t-switch .dlg-tempt-inner { background: linear-gradient(#fbbf24, #d97706);
-        color: #1c1400; }
-      .dlg-t-call { top: 4%; }
-      .dlg-t-call .dlg-tempt-inner { background: #1c1c2e; color: #f2f2f5;
-        border: 1px solid #34d399; border-radius: 22px; font-weight: 600;
-        font-size: 15px; }
     </style>
     <div class="dlg">
       <div class="dlg-top"></div>
@@ -130,7 +103,6 @@ function createDontLetGoMatchClient(
         <div class="dlg-dot">
           <img src="${HEART_SRC}" alt="" draggable="false" />
         </div>
-        <div class="dlg-tempt" hidden><div class="dlg-tempt-inner"></div></div>
         <div class="dlg-redflash"></div>
         <div class="dlg-banner"></div>
       </div>
@@ -140,9 +112,6 @@ function createDontLetGoMatchClient(
   const statusEl = ctx.container.querySelector<HTMLElement>(".dlg-status")!;
   const stageEl = ctx.container.querySelector<HTMLElement>(".dlg-stage")!;
   const dotEl = ctx.container.querySelector<HTMLElement>(".dlg-dot")!;
-  const temptEl = ctx.container.querySelector<HTMLElement>(".dlg-tempt")!;
-  const temptInnerEl =
-    ctx.container.querySelector<HTMLElement>(".dlg-tempt-inner")!;
   const redFlashEl = ctx.container.querySelector<HTMLElement>(".dlg-redflash")!;
   const bannerEl = ctx.container.querySelector<HTMLElement>(".dlg-banner")!;
   const flash = createMatchFlash(stageEl);
@@ -341,17 +310,6 @@ function createDontLetGoMatchClient(
       if (cell) cell.classList.toggle("dlg-out", !aliveSet.has(p.playerId));
     }
 
-    // Temptation overlay (all lies).
-    const t = msg.temptation;
-    if (t && typeof t.text === "string" && Date.now() < t.until) {
-      const style = TEMPT_STYLES.has(t.style) ? t.style : "alert";
-      temptEl.className = `dlg-tempt dlg-t-${style}`;
-      temptInnerEl.textContent = t.text;
-      temptEl.hidden = false;
-    } else {
-      temptEl.hidden = true;
-    }
-
     const holding = `${msg.alive.length}/${roster.length || msg.alive.length} holding`;
     ctx.setMatchScore(holding);
     statusEl.textContent = statusLine(holding, formatRemaining(deadlineAt));
@@ -388,7 +346,7 @@ function escapeHtml(s: string): string {
 
 const DontLetGoClient: MiniGameClientDefinition = {
   id: "dont-let-go",
-  controlsHint: "finger ON the dot & follow it — every prompt is a LIE, never lift!",
+  controlsHint: "finger ON the dot and follow it — it only gets faster. never lift!",
   createMatch: createDontLetGoMatchClient,
 };
 

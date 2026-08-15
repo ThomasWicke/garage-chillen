@@ -170,9 +170,16 @@ function createHotBidMatch(ctx: MatchContext): MatchSession {
 
   function resolveCard() {
     const card = currentCard();
+    // Bids are clamped to coins on arrival AND re-clamped here — audited
+    // after a playtest report of an over-bid (couldn't be reproduced; the
+    // likely sighting was the reveal showing a winning bid next to the
+    // already-debited balance). This keeps the invariant airtight either way.
     const entries = players.map((p) => ({
       playerId: p.playerId,
-      amount: state.bids.get(p.playerId)?.amount ?? 0,
+      amount: Math.min(
+        state.bids.get(p.playerId)?.amount ?? 0,
+        state.econ.get(p.playerId)?.coins ?? 0,
+      ),
     }));
     entries.sort((a, b) => b.amount - a.amount);
     const maxBid = entries[0]?.amount ?? 0;

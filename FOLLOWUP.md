@@ -1,5 +1,35 @@
 # Follow-up notes
 
+## Round 5 (2026-08-15, playtest of the experimental games)
+
+- **Don't Let Go**: fake-prompt "temptations" removed entirely (they read as
+  obviously fake). The dot now accelerates without mercy instead —
+  45 px/s + 2.2/s + 0.02/s² ≈ 130 at 30s, 250 at 60s, 400 at 90s.
+- **Hot Bid**: audited the over-bid report — not reproducible. Bids are
+  clamped to current coins at message arrival AND (now) re-clamped at
+  resolve; coins only change between bidding windows; the client stepper
+  clamps too. Likely sighting: the reveal shows the winning bid next to the
+  ALREADY-DEBITED balance (bid 60 · balance 0), which looks like an
+  over-bid.
+- **Ten Seconds**: three real problems fixed. (1) The STOP button appeared
+  only at GO, shoving the whole layout up mid-round. It's now visible
+  (disabled, "GET READY…") through the arm phase — no more jumps.
+  (2) There was no visible lead-in; the timer element now shows a big
+  3…2…1 that rolls directly into 0.00. (3) The count-up compared a server
+  timestamp against the raw device clock, so clock skew froze or jumped the
+  display; state broadcasts now carry serverNow and the client keeps a
+  smoothed clock-offset. (Server-side timing was always authoritative —
+  fairness was never affected, only the display.)
+- **Marble Race** (renamed from Marble Derby; id stays `marble-derby`):
+  board lifted from near-black (it looked "disabled" next to the bright
+  betting cards) — lighter background, brighter pegs/walls. Results now
+  broadcast the FULL finish order and show a big personal line
+  ("your pick: Bean → 2nd (+1)") plus the 1st–6th order.
+- **Fruit Frenzy**: skull penalty −3 → −5.
+- **Penalty Shootout**: regulation now plays in halves (p1 shoots rounds
+  1-3, p2 shoots 4-6) instead of flip-flopping every round; sudden death
+  still alternates so each extra pair gives both a shot.
+
 ## Round 4 (2026-08-14, five experimental games)
 
 Five new games on mechanics the collection didn't have, all LMS, all in

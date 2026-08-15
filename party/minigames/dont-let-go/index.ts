@@ -1,11 +1,9 @@
-// Don't Let Go — last-man-standing finger endurance + psychological warfare.
+// Don't Let Go — last-man-standing finger endurance.
 //
 // Every player keeps a finger pressed on a wandering dot on their OWN screen.
-// The dot drifts around the field (speeding up over time) so the finger must
-// follow it. Lose contact for more than a 350ms grace window = eliminated.
-// Meanwhile the server broadcasts "temptation" events — fake prompts styled
-// to trick players into lifting ("RELEASE NOW FOR +10 POINTS!"). All lies;
-// any release is death. Last finger standing wins.
+// The dot drifts around the field, accelerating relentlessly until staying
+// on it becomes physically impossible. Lose contact for more than a 350ms
+// grace window = eliminated. Last finger standing wins.
 //
 // The server is authoritative for the dot path and eliminations. Clients
 // report their contact state as an idempotent set: an edge message on change
@@ -32,26 +30,13 @@ const WAYPOINT_MARGIN = 60;
 const GRACE_MS = 350;
 /** No contact message at all for this long = stale client, eliminated. */
 const STALE_MS = 1_200;
-/** Dot speed at GO (px/s)... */
-const BASE_SPEED = 40;
-/** ...ramping +4 px/s every 5 seconds. */
-const SPEED_RAMP_PER_MS = 4 / 5_000;
-const FIRST_TEMPTATION_MS = 8_000;
-const TEMPTATION_MIN_GAP_MS = 6_000;
-const TEMPTATION_MAX_GAP_MS = 10_000;
-/** How long each temptation stays on screen client-side. */
-const TEMPTATION_SHOW_MS = 2_500;
+/** Dot speed at GO (px/s). The ramp below makes the endgame impossible:
+ *  speed(t) = BASE + LINEAR·t + QUAD·t² (t in seconds) —
+ *  ~130 px/s at 30s, ~250 at 60s, ~400 at 90s. Nobody survives to 90. */
+const BASE_SPEED = 45;
+const SPEED_LINEAR_PER_S = 2.2;
+const SPEED_QUAD_PER_S2 = 0.02;
 const DLG_MATCH_TIMEOUT_MS = 90_000;
-
-/** All of these are lies. Lifting a finger for any of them is death. */
-const TEMPTATIONS: { style: string; text: string }[] = [
-  { style: "bonus", text: "⚡ RELEASE NOW FOR +10 POINTS!" },
-  { style: "shield", text: "❗ Double-tap to shield!" },
-  { style: "call", text: "📞 Incoming call · Mom — swipe up to answer" },
-  { style: "switch", text: "🔄 Switch fingers NOW!" },
-  { style: "bonus", text: "🎁 Lift your finger for a mystery bonus!" },
-  { style: "alert", text: "⚠️ SMUDGE DETECTED — wipe your screen!" },
-];
 
 type PlayerState = {
   playerId: string;
@@ -68,14 +53,10 @@ type PlayerState = {
   lastContactMsgAt: number;
 };
 
-type Temptation = { text: string; style: string; until: number };
-
 type State = {
   players: Map<string, PlayerState>;
   dot: { x: number; y: number };
   waypoint: { x: number; y: number } | null;
-  temptation: Temptation | null;
-  nextTemptationAt: number;
   /** One-shot re-anchor of grace/stale timers at GO. */
   liveInit: boolean;
   ended: boolean;
@@ -89,8 +70,6 @@ function createDontLetGoMatch(ctx: MatchContext): MatchSession {
     // Dot frozen at center until GO.
     dot: { x: DLG_FIELD_W / 2, y: DLG_FIELD_H / 2 },
     waypoint: null,
-    temptation: null,
-    nextTemptationAt: Math.round(ctx.startAt + FIRST_TEMPTATION_MS),
     liveInit: false,
     ended: false,
   };
@@ -123,17 +102,12 @@ function createDontLetGoMatch(ctx: MatchContext): MatchSession {
   });
 
   function broadcastState() {
-    const now = Date.now();
     ctx.broadcast({
       type: "state",
       dot: { x: Math.round(state.dot.x), y: Math.round(state.dot.y) },
       alive: [...state.players.values()]
         .filter((p) => p.alive)
         .map((p) => p.playerId),
-      temptation:
-        state.temptation && now < state.temptation.until
-          ? state.temptation
-          : null,
       deadlineAt: ctx.deadlineAt,
     });
   }
@@ -147,7 +121,8 @@ function createDontLetGoMatch(ctx: MatchContext): MatchSession {
 
   function moveDot(dt: number, now: number) {
     if (!state.waypoint) state.waypoint = pickWaypoint();
-    const speed = BASE_SPEED + Math.max(0, now - ctx.startAt) * SPEED_RAMP_PER_MS;
+    const t = Math.max(0, now - ctx.startAt) / 1000;
+    const speed = BASE_SPEED + SPEED_LINEAR_PER_S * t + SPEED_QUAD_PER_S2 * t * t;
     const dx = state.waypoint.x - state.dot.x;
     const dy = state.waypoint.y - state.dot.y;
     const dist = Math.hypot(dx, dy);
@@ -273,21 +248,6 @@ function createDontLetGoMatch(ctx: MatchContext): MatchSession {
       }
 
       moveDot(dt, now);
-
-      // Temptation schedule — tick-driven, integer timestamps on the wire.
-      if (now >= state.nextTemptationAt) {
-        const t = TEMPTATIONS[Math.floor(Math.random() * TEMPTATIONS.length)];
-        state.temptation = {
-          text: t.text,
-          style: t.style,
-          until: Math.round(now + TEMPTATION_SHOW_MS),
-        };
-        state.nextTemptationAt = Math.round(
-          now +
-            TEMPTATION_MIN_GAP_MS +
-            Math.random() * (TEMPTATION_MAX_GAP_MS - TEMPTATION_MIN_GAP_MS),
-        );
-      }
 
       // Eliminations — one shared timestamp so same-tick deaths tie.
       for (const p of state.players.values()) {

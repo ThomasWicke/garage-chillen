@@ -1,6 +1,6 @@
 // Fruit Frenzy client. DOM arena: absolutely-positioned crew-sprite images
 // moved via style.transform on every state broadcast. Tap a fruit to claim
-// it first (+1); tap a bomb (skull) and you eat -3 plus a 1.5s stun (arena
+// it first (+1); tap a bomb (skull) and you eat -5 plus a 1.5s stun (arena
 // edges glow red while stunned). Live scoreboard of all players at the top.
 //
 // Pop cues come from the server's `events` array in each state message.
@@ -301,7 +301,7 @@ function createFruitFrenzyMatchClient(
 
 const FruitFrenzyClient: MiniGameClientDefinition = {
   id: "fruit-frenzy",
-  controlsHint: "tap fruit first to claim it — bombs cost 3 and stun you!",
+  controlsHint: "tap fruit first to claim it — skulls cost 5 and stun you!",
   createMatch: createFruitFrenzyMatchClient,
 };
 

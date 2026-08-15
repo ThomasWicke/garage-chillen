@@ -1,4 +1,4 @@
-// Marble Derby match client. Kaplay scene renders the canonical server
+// Marble Race match client (id "marble-derby"). Kaplay scene renders the
 // plinko board (pegs, walls, finish line) and the six racer marbles as
 // @kaplayjs/crew character sprites. Nobody steers anything — the DOM overlay
 // carries the whole betting spectacle: racer cards to tap a bet on, phase
@@ -57,7 +57,13 @@ type StateMsg = {
   phaseEndsAt: number;
   marbles: { x: number; y: number }[];
   points: Record<string, number>;
-  lastResult: { raceIndex: number; winner: number; second: number } | null;
+  lastResult: {
+    raceIndex: number;
+    winner: number;
+    second: number;
+    /** Full finish order (racer indices, best→worst). */
+    order: number[];
+  } | null;
   deadlineAt: number;
   hasBet?: string[];
   bets?: Record<string, number>;
@@ -134,7 +140,15 @@ function createMarbleDerbyMatchClient(
         box-shadow: 0 0 10px rgba(171, 221, 100, 0.35);
       }
       .mdby-card.mdby-picked .mdby-card-name { color: #abdd64; }
-      .mdby-card.mdby-disabled { opacity: 0.75; }
+      .mdby-card.mdby-disabled { opacity: 0.88; }
+      .mdby-results .mdby-results-mine {
+        font-size: 17px; font-weight: 800; padding: 6px 14px;
+        border-radius: 10px; background: #1a1a2c; border: 1px solid #2a2a3a;
+      }
+      .mdby-results .mdby-results-mine.mdby-mine-win { color: #abdd64; border-color: #abdd64; }
+      .mdby-results .mdby-results-mine.mdby-mine-second { color: #ffd75e; border-color: #ffd75e; }
+      .mdby-results .mdby-results-order { font-size: 13px; color: #9a9aa5; }
+      .mdby-results .mdby-results-order strong { color: #f2f2f5; font-weight: 700; }
       .mdby-card.mdby-race-winner { border-color: #ffd75e; }
       .mdby-chips {
         display: flex; flex-wrap: wrap; justify-content: center; gap: 2px;
@@ -299,7 +313,9 @@ function createMarbleDerbyMatchClient(
     k = kaplay({
       width: welcome.field.w,
       height: welcome.field.h,
-      background: [10, 10, 20],
+      // Lifted from near-black — the board looked "darkened" next to the
+      // bright betting cards, as if it were disabled.
+      background: [30, 30, 50],
       letterbox: true,
       global: false,
       root: stageEl,
@@ -312,13 +328,13 @@ function createMarbleDerbyMatchClient(
       kk.rect(6, welcome.field.h),
       kk.pos(0, 0),
       kk.anchor("topleft"),
-      kk.color(42, 42, 58),
+      kk.color(80, 80, 110),
     ]);
     kk.add([
       kk.rect(6, welcome.field.h),
       kk.pos(welcome.field.w - 6, 0),
       kk.anchor("topleft"),
-      kk.color(42, 42, 58),
+      kk.color(80, 80, 110),
     ]);
 
     // Finish line — bright strip at finishY.
@@ -335,7 +351,7 @@ function createMarbleDerbyMatchClient(
         kk.circle(welcome.pegRadius),
         kk.pos(peg.x, peg.y),
         kk.anchor("center"),
-        kk.color(154, 154, 165),
+        kk.color(205, 205, 220),
       ]);
     }
 
@@ -385,7 +401,6 @@ function createMarbleDerbyMatchClient(
       else if (racer === res.second) seconds.push(p.nickname);
     }
     const winnerKey = racers[res.winner] ?? "";
-    const secondKey = racers[res.second] ?? "";
     const scorerLines: string[] = [];
     if (winners.length > 0) {
       scorerLines.push(`+3 · ${winners.map(escapeHtml).join(", ")}`);
@@ -393,10 +408,43 @@ function createMarbleDerbyMatchClient(
     if (seconds.length > 0) {
       scorerLines.push(`+1 · ${seconds.map(escapeHtml).join(", ")}`);
     }
+
+    // Full finish order — "1st Bean · 2nd Kat · 3rd Bobo · …".
+    const order = res.order ?? [res.winner, res.second];
+    const ordinal = (n: number) =>
+      n === 1 ? "1st" : n === 2 ? "2nd" : n === 3 ? "3rd" : `${n}th`;
+    const orderLine = order
+      .map(
+        (racer, i) =>
+          `${ordinal(i + 1)} <strong>${escapeHtml(racerLabel(racers[racer] ?? "?"))}</strong>`,
+      )
+      .join(" · ");
+
+    // Personal outcome — the playtest complaint was "did my pick get 2nd or
+    // 3rd?"; answer it in one big line.
+    const mine = ctx.isSpectator ? undefined : myPick.get(res.raceIndex);
+    let mineLine = "";
+    if (mine !== undefined) {
+      const place = order.indexOf(mine) + 1;
+      const cls =
+        place === 1
+          ? "mdby-mine-win"
+          : place === 2
+            ? "mdby-mine-second"
+            : "";
+      const pts = place === 1 ? " (+3)" : place === 2 ? " (+1)" : " (+0)";
+      mineLine = `<div class="mdby-results-mine ${cls}">your pick: ${escapeHtml(
+        racerLabel(racers[mine] ?? "?"),
+      )} → ${place > 0 ? ordinal(place) : "?"}${pts}</div>`;
+    } else if (!ctx.isSpectator) {
+      mineLine = `<div class="mdby-results-mine">you didn't bet this race</div>`;
+    }
+
     resultsEl.innerHTML = `
       <img class="mdby-results-winner" src="${crewSrc(winnerKey)}" alt="" />
       <div class="mdby-results-title">${escapeHtml(racerLabel(winnerKey))} wins race ${res.raceIndex + 1}!</div>
-      <div class="mdby-results-second">2nd · ${escapeHtml(racerLabel(secondKey))}</div>
+      ${mineLine}
+      <div class="mdby-results-order">${orderLine}</div>
       <div class="mdby-results-scorers">${
         scorerLines.length > 0
           ? scorerLines.join("<br/>")

@@ -105,6 +105,10 @@ function createTenSecondsMatch(ctx: MatchContext): MatchSession {
       rounds: ROUNDS,
       phaseUntil: state.phaseUntil,
       roundStartAt: state.roundStartAt,
+      // Server clock, so clients can correct for device clock skew — the
+      // count-up display compares roundStartAt against local time, and a
+      // skewed phone otherwise shows a frozen or jumping timer.
+      serverNow: Date.now(),
       // Who has locked in this round — but never their times (suspense until
       // results; broadcast reaches spectators too).
       tappedIds: [...state.taps.keys()],
