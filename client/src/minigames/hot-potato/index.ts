@@ -27,6 +27,7 @@ type StateMsg = {
   pauseUntil: number;
   /** Server time when the current holder may pass (pass-arm delay). */
   armAt: number;
+  deadlineAt?: number;
 };
 
 function createHotPotatoMatchClient(
@@ -105,6 +106,8 @@ function createHotPotatoMatchClient(
 
     const alive = msg.alive.length;
     const total = players.length;
+    // Deliberately NO clock: in a potato game a visible countdown reads as
+    // the fuse. The deadline is a generous safety cap (180s), not a fuse.
     ctx.setMatchScore(`${alive}/${total} alive`);
 
     const iAmAlive = msg.alive.includes(ctx.selfPlayerId);

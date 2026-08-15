@@ -219,7 +219,7 @@ function createPongMatchClient(ctx: MatchClientContext): MatchClientSession {
 
     statusEl.textContent = msg.running
       ? statusLine(roleHint, formatRemaining(msg.deadlineAt))
-      : "round over";
+      : "match over";
   }
 
   function applyWelcome(msg: WelcomeMsg) {

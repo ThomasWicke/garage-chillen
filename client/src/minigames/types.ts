@@ -28,6 +28,10 @@ export type MatchClientContext = {
   send: (msg: { type: string; [k: string]: unknown }) => void;
   /** Push current match score to the universal session toolbar. Pass null to clear. */
   setMatchScore: (text: string | null) => void;
+  /** True while the local player is the lobby host (GM). Social games show
+   *  host-only controls ("end discussion") behind this; the server enforces
+   *  it independently. */
+  isHost: () => boolean;
 };
 
 export type MatchClientSession = {

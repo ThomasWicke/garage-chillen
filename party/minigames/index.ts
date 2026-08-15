@@ -29,5 +29,8 @@ import "./ten-seconds";
 import "./hot-bid";
 import "./dont-let-go";
 import "./marble-derby";
+import "./categories";
+import "./who-am-i";
+import "./doodle-chain";
 
 export { allMiniGames, getMiniGame } from "./registry";

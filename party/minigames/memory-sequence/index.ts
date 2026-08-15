@@ -27,6 +27,9 @@ type PlayerState = {
   completedAt: number;
   eliminated: boolean;
   diedAt: number;
+  /** Round the player went out in (fractional for forfeits so they rank
+   *  below that round's natural deaths). Same-round deaths SHARE a rank. */
+  diedRound: number;
 };
 
 type GameState = {
@@ -59,7 +62,7 @@ function createMemorySequenceMatch(ctx: MatchContext): MatchSession {
     players: new Map(
       players.map((p) => [
         p.playerId,
-        { progress: 0, completedAt: 0, eliminated: false, diedAt: 0 },
+        { progress: 0, completedAt: 0, eliminated: false, diedAt: 0, diedRound: 0 },
       ]),
     ),
     ended: false,
@@ -164,34 +167,44 @@ function createMemorySequenceMatch(ctx: MatchContext): MatchSession {
       if (p.progress < state.sequence.length) {
         p.eliminated = true;
         p.diedAt = now;
+        p.diedRound = state.round;
       }
     }
     state.phase = "result";
     state.resultEndsAt = now + RESULT_HOLD_MS;
   }
 
-  function shuffleInPlace<T>(arr: T[]): void {
-    for (let i = arr.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [arr[i], arr[j]] = [arr[j], arr[i]];
+  function computePlacements(): Record<string, number> {
+    // Survivors share rank 1 (they all reached the same round); eliminated
+    // players rank by the round they went out in, later = better, and
+    // everyone who went out in the SAME round shares that rank — two
+    // players fumbling the same sequence must not be coin-flipped into a
+    // "winner" and a loser.
+    const out: Record<string, number> = {};
+    const alive: string[] = [];
+    const dead: { pid: string; diedRound: number }[] = [];
+    for (const [pid, p] of state.players) {
+      if (p.eliminated) dead.push({ pid, diedRound: p.diedRound });
+      else alive.push(pid);
     }
+    let rank = 1;
+    for (const pid of alive) out[pid] = rank;
+    rank += alive.length;
+    dead.sort((a, b) => b.diedRound - a.diedRound);
+    let i = 0;
+    while (i < dead.length) {
+      let j = i;
+      while (j < dead.length && dead[j].diedRound === dead[i].diedRound) j++;
+      for (let g = i; g < j; g++) out[dead[g].pid] = rank;
+      rank += j - i;
+      i = j;
+    }
+    return out;
   }
 
-  function computePlacements(): Record<string, number> {
-    const out: Record<string, number> = {};
-    const alive: { pid: string; round: number }[] = [];
-    const dead: { pid: string; diedAt: number }[] = [];
-    for (const [pid, p] of state.players) {
-      if (p.eliminated) dead.push({ pid, diedAt: p.diedAt });
-      else alive.push({ pid, round: state.round });
-    }
-    // Among alive: tied (all reached the same round). Coinflip.
-    shuffleInPlace(alive);
-    dead.sort((a, b) => b.diedAt - a.diedAt);
-    let rank = 1;
-    for (const e of alive) out[e.pid] = rank++;
-    for (const e of dead) out[e.pid] = rank++;
-    return out;
+  function soleWinner(placements: Record<string, number>): string | null {
+    const top = Object.entries(placements).filter(([, r]) => r === 1);
+    return top.length === 1 ? top[0][0] : null;
   }
 
   function endByLastAlive() {
@@ -199,7 +212,7 @@ function createMemorySequenceMatch(ctx: MatchContext): MatchSession {
     state.ended = true;
     state.phase = "ended";
     const placements = computePlacements();
-    const winnerId = Object.entries(placements).find(([, r]) => r === 1)?.[0] ?? null;
+    const winnerId = soleWinner(placements);
     const winnerNick = winnerId
       ? (players.find((p) => p.playerId === winnerId)?.nickname ?? "?")
       : null;
@@ -207,7 +220,9 @@ function createMemorySequenceMatch(ctx: MatchContext): MatchSession {
     ctx.endMatch({
       winnerId,
       placements,
-      summary: winnerNick ? `${winnerNick} remembers best` : "no winner",
+      summary: winnerNick
+        ? `${winnerNick} remembers best`
+        : "everyone slipped up on the same round · tie",
     });
   }
 
@@ -216,10 +231,9 @@ function createMemorySequenceMatch(ctx: MatchContext): MatchSession {
     state.ended = true;
     state.phase = "ended";
     const placements = computePlacements();
-    const winnerId = Object.entries(placements).find(([, r]) => r === 1)?.[0] ?? null;
     broadcastState();
     ctx.endMatch({
-      winnerId,
+      winnerId: soleWinner(placements),
       placements,
       summary: "time's up",
     });
@@ -261,8 +275,12 @@ function createMemorySequenceMatch(ctx: MatchContext): MatchSession {
         broadcastState();
       } else if (state.phase === "input") {
         // End early if all alive players finished.
+        // End the input phase as soon as everyone alive is done — INCLUDING
+        // the case where nobody is alive anymore (everyone wrong-tapped):
+        // waiting out the deadline there left the room staring at
+        // "eliminated" for up to sequenceLength × 4s, which read as a crash.
         const alive = [...state.players.values()].filter((p) => !p.eliminated);
-        const allDone = alive.length > 0 && alive.every((p) => p.progress >= state.sequence.length);
+        const allDone = alive.every((p) => p.progress >= state.sequence.length);
         if (allDone || now >= state.inputDeadline) {
           evaluateInputPhase();
           broadcastState();
@@ -306,6 +324,7 @@ function createMemorySequenceMatch(ctx: MatchContext): MatchSession {
         // Wrong tap → eliminated this round.
         p.eliminated = true;
         p.diedAt = Date.now();
+        p.diedRound = state.round;
       }
     },
     onPlayerLeft(playerId) {
@@ -313,6 +332,8 @@ function createMemorySequenceMatch(ctx: MatchContext): MatchSession {
       if (p && !p.eliminated) {
         p.eliminated = true;
         p.diedAt = Date.now();
+        // Forfeit ranks just below this round's natural deaths.
+        p.diedRound = state.round - 0.5;
       }
     },
     cleanup() {},

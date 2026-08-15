@@ -6,7 +6,7 @@
 // The server hides both choices until the reveal — during "choosing" the
 // wire only carries picked-booleans, so there is nothing to peek at here.
 
-import { formatRemaining, statusLine } from "../clock";
+import { statusLine } from "../clock";
 import { createMatchFlash } from "../flash";
 import { registerMiniGameClient } from "../registry";
 import type {
@@ -48,6 +48,7 @@ type StateMsg = {
     keeperId: string;
     shooterZone: Zone;
     keeperZone: Zone;
+    keeperPicked?: boolean;
     scored: boolean;
   } | null;
   deadlineAt: number;
@@ -233,13 +234,13 @@ function createPenaltyShootoutMatchClient(
   }
 
   function roundLabel(msg: StateMsg): string {
-    return msg.suddenDeath
-      ? `sudden death ${msg.round - msg.regRounds}`
-      : `round ${msg.round}/${msg.regRounds}`;
+    return `round ${msg.round}/${msg.regRounds}`;
   }
 
   function applyState(msg: StateMsg) {
     if (role === null || players === null) return; // welcome not seen yet
+    const p1Nick = () => players?.p1.nickname ?? "?";
+    const p2Nick = () => players?.p2.nickname ?? "?";
 
     // New round → clear selection + reveal emojis.
     if (msg.round !== uiRound) {
@@ -316,7 +317,9 @@ function createPenaltyShootoutMatchClient(
     } else if (msg.phase === "reveal" && msg.reveal) {
       bannerEl.classList.remove("ps-shoot", "ps-defend");
       bannerEl.textContent = msg.reveal.scored ? "GOAL!" : "SAVED!";
-      subEl.textContent = `${shooterNick} → ${msg.reveal.shooterZone} · ${keeperNick} dove ${msg.reveal.keeperZone}`;
+      subEl.textContent = `${shooterNick} → ${msg.reveal.shooterZone} · ${keeperNick} ${
+        msg.reveal.keeperPicked ? `dove ${msg.reveal.keeperZone}` : "stayed put (center)"
+      }`;
       if (msg.reveal.round !== revealedRound) {
         revealedRound = msg.reveal.round;
         flash.flash(msg.reveal.scored ? "GOAL!" : "SAVED!");
@@ -327,9 +330,12 @@ function createPenaltyShootoutMatchClient(
       subEl.textContent = "";
     }
 
+    // No total clock — rounds resolve as soon as both have picked; the
+    // round label + pick countdown are the honest structure.
     statusEl.textContent = statusLine(
-      msg.suddenDeath ? "sudden death" : null,
-      formatRemaining(msg.deadlineAt),
+      msg.round <= msg.regRounds / 2
+        ? `${p1Nick()} shoots first half`
+        : `${p2Nick()} shoots second half`,
     );
   }
 
@@ -347,7 +353,7 @@ function createPenaltyShootoutMatchClient(
 
 const PenaltyShootoutClient: MiniGameClientDefinition = {
   id: "penalty-shootout",
-  controlsHint: "shooter picks a corner, keeper guesses — goal if they miss you!",
+  controlsHint: "3 shots each: pick left / center / right — goal if the keeper guesses wrong",
   createMatch: createPenaltyShootoutMatchClient,
 };
 

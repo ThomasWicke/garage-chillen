@@ -13,6 +13,8 @@ export type GamemodeClientContext = {
   container: HTMLElement;
   /** Own playerId. */
   selfPlayerId: string;
+  /** Whether the local player is currently the host (can change mid-round). */
+  isGm: () => boolean;
   /** Lobby players at gamemode start. */
   lobbyPlayers: MiniGameClientPlayer[];
   /** The mini-game definition (so the gamemode can create match clients). */

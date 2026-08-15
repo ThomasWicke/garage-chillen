@@ -4,7 +4,7 @@
 
 import { avatarSrc } from "../../identity";
 import { registerMiniGameClient } from "../registry";
-import { formatRemaining, statusLine } from "../clock";
+import { statusLine } from "../clock";
 import type {
   MatchClientContext,
   MatchClientSession,
@@ -187,7 +187,7 @@ function createOddOneOutMatchClient(
     statusEl.textContent = statusLine(
       `round ${msg.round}/${msg.rounds ?? totalRounds}`,
       msg.phase === "play" ? `${secs}s` : null,
-      formatRemaining(msg.deadlineAt),
+      // No total clock — rounds end on the first correct tap.
     );
 
     if (msg.phase === "play") {

@@ -13,6 +13,7 @@ import type {
   MatchClientSession,
 } from "../../minigames/types";
 import { showWarmupOverlay } from "../../ui/warmup-overlay";
+import { bindHeldIntro, heldIntroHtml } from "../../ui/held-intro";
 import { registerGamemodeClient } from "../registry";
 import type {
   GamemodeClientContext,
@@ -26,6 +27,8 @@ type LmsState = {
   type: "lms-state";
   phase: Phase;
   phaseEndsAt: number | null;
+  /** Tutorial "paused": the intro is held until the host taps START. */
+  awaitingHost?: boolean;
   /** Server-time when the match simulation starts; warm-up overlay until then. */
   goAt: number | null;
   matchId: string;
@@ -107,6 +110,7 @@ function createLmsClientSession(
       // Spectators should never send — defensive no-op.
       send: spectating ? () => {} : (m) => ctx.sendMatch(matchId, m),
       setMatchScore: (text) => ctx.setMatchScore(text),
+      isHost: () => ctx.isGm(),
     };
     try {
       activeMatchSession = ctx.miniGame.createMatch(matchCtx);
@@ -150,10 +154,15 @@ function createLmsClientSession(
       const sec = lmsState.phaseEndsAt
         ? Math.max(0, Math.ceil((lmsState.phaseEndsAt - Date.now()) / 1000))
         : 0;
+      const held = lmsState.awaitingHost === true;
       body = `
         <div class="lms-title">${escapeHtml(ctx.miniGameDisplayName)}</div>
         <div class="lms-subtitle">Last One Standing</div>
-        <div class="lms-countdown">${sec}</div>
+        ${
+          held
+            ? heldIntroHtml(ctx.miniGame.controlsHint ?? null, ctx.isGm())
+            : `<div class="lms-countdown">${sec}</div>`
+        }
         <div class="lms-roster">${
           lmsState.players
             .map(
@@ -172,12 +181,16 @@ function createLmsClientSession(
       body = `<div class="lms-complete">match complete</div>`;
     }
     introEl.innerHTML = body;
+    bindHeldIntro(introEl, () => ctx.sendGamemode({ type: "tutorial-start" }));
   }
 
   function ensureCountdown() {
     if (countdownTimer) return;
     countdownTimer = setInterval(() => {
       if (!lmsState) return;
+      // Held intro has no countdown — and re-rendering it every 250ms would
+      // replace the START button under the host's finger.
+      if (lmsState.awaitingHost) return;
       if (lmsState.phase === "intro" && !isParticipantInActiveMatch()) {
         renderIntroView();
       }

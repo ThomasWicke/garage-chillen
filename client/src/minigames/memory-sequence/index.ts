@@ -29,6 +29,7 @@ type StateMsg = {
   showStepEndsAt: number;
   inputDeadline: number;
   resultEndsAt: number;
+  deadlineAt?: number;
   players: Record<
     string,
     { progress: number; eliminated: boolean; completedAt: number }
@@ -107,6 +108,7 @@ function createMemorySequenceMatchClient(
     // Per-player progress for the live scoreboard.
     const aliveCount = Object.values(msg.players).filter((p) => !p.eliminated).length;
     const total = Object.keys(msg.players).length;
+    // No clock: the 3-minute deadline is a safety cap, not part of the game.
     ctx.setMatchScore(`${aliveCount}/${total} alive`);
 
     // Tiny progress dots row showing each alive player's progress.

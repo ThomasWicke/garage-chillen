@@ -29,8 +29,10 @@ import type {
 const INTRO_MS = 3_000;
 /** Test-lobby fast mode. */
 const FAST_INTRO_MS = 1_500;
-/** Scene visible but simulation frozen for this long before GO. */
+/** Scene visible but simulation frozen for this long before GO; tutorial
+ *  style "slow" stretches it. */
 const WARMUP_MS = 3_000;
+const SLOW_WARMUP_MS = 7_000;
 const MATCH_FORCE_GRACE_MS = 5_000;
 const MATCH_ID = "lms";
 
@@ -45,6 +47,9 @@ function createLastManStandingSession(
   }
 
   const introMs = ctx.test?.fast ? FAST_INTRO_MS : INTRO_MS;
+  const tutorial = ctx.settings.tutorial;
+  /** Tutorial "paused": the intro is HELD until the host taps START. */
+  let awaitingHost = tutorial === "paused";
   let phase: Phase = "intro";
   let phaseEndsAt: number | null = Date.now() + introMs;
   let phaseTimer: ReturnType<typeof setTimeout> | null = null;
@@ -64,7 +69,9 @@ function createLastManStandingSession(
     return {
       type: "lms-state",
       phase,
-      phaseEndsAt,
+      phaseEndsAt: phase === "intro" && awaitingHost ? null : phaseEndsAt,
+      /** Tutorial "paused": intro held until the host starts it. */
+      awaitingHost: phase === "intro" && awaitingHost,
       goAt: phase === "playing" ? goAt : null,
       matchId: MATCH_ID,
       players: participantsAtStart.map((p) => ({
@@ -92,7 +99,7 @@ function createLastManStandingSession(
 
     phase = "playing";
     phaseEndsAt = null;
-    const startAt = Date.now() + WARMUP_MS;
+    const startAt = Date.now() + (tutorial === "slow" ? SLOW_WARMUP_MS : WARMUP_MS);
     goAt = startAt;
     // Warm-up doesn't eat into play time.
     deadlineAt = startAt + ctx.miniGame.matchTimeoutMs;
@@ -121,6 +128,7 @@ function createLastManStandingSession(
         ctx.sendMatch(MATCH_ID, pid, msg);
       },
       endMatch: (result) => completeMatch(result),
+      isHost: (pid) => ctx.isGm(pid),
       log: (...args) => ctx.log("[lms-match]", ...args),
     };
     matchSession = ctx.miniGame.createMatch(matchCtx);
@@ -206,14 +214,21 @@ function createLastManStandingSession(
 
   for (const p of lobbyPlayers) ctx.setClickerAvailable(p.playerId, false);
   broadcastState();
-  phaseTimer = setTimeout(() => {
-    phaseTimer = null;
-    if (ended) return;
-    startMatch();
-  }, introMs);
+  if (!awaitingHost) {
+    phaseTimer = setTimeout(() => {
+      phaseTimer = null;
+      if (ended) return;
+      startMatch();
+    }, introMs);
+  }
 
   return {
     tick: tickFn,
+    startNow() {
+      if (ended || phase !== "intro" || !awaitingHost) return;
+      awaitingHost = false;
+      startMatch();
+    },
     onMatchMessage(playerId, matchId, msg) {
       if (matchId !== MATCH_ID || matchEnded || !matchSession) return;
       // Gate to actual participants — mid-match joiners and intro-leavers

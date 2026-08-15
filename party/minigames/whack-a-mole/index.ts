@@ -159,7 +159,10 @@ function createWhackAMoleMatch(ctx: MatchContext): MatchSession {
     ctx.endMatch({
       winnerId,
       placements,
-      summary: winnerNick ? `${winnerNick} wins · ${winnerScore} hits` : "no hits",
+      summary:
+        winnerNick && winnerScore > 0
+          ? `${winnerNick} wins · ${winnerScore} hits`
+          : "nobody scored · coinflip",
     });
   }
 

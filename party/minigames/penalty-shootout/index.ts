@@ -2,8 +2,9 @@
 // shoots rounds 1-3, then p2 shoots rounds 4-6. Each round both players
 // secretly pick a zone
 // (left / center / right): the shooter aims, the keeper dives. Goal iff
-// the zones differ. Most goals after 6 rounds wins; still level → sudden
-// death in pairs (max 6 extra rounds), then null winner.
+// the zones differ. Most goals after 6 rounds wins; still level → null
+// winner (the gamemode coin-flips). No sudden death — playtest verdict:
+// "3 me, 3 you, nothing more".
 //
 // Tick-driven phase machine per round:
 //   "choosing" (5s — no pick: shooter gets a random zone, keeper stays
@@ -14,8 +15,8 @@
 // boolean picked-flags — never the zones. Zones are first put on the wire
 // inside `reveal` once the round is resolved.
 //
-// matchTimeoutMs 120s; at the deadline the current leader wins (tie →
-// null, gamemode resolves).
+// matchTimeoutMs is a safety net just past the 42s maximum; at the deadline
+// the current leader wins (tie → null, gamemode resolves).
 
 import { registerMiniGame } from "../registry";
 import type {
@@ -30,8 +31,10 @@ type Zone = (typeof ZONES)[number];
 const CHOOSE_MS = 5_000;
 const REVEAL_MS = 2_000;
 const REG_ROUNDS = 6;
-const MAX_SUDDEN_DEATH_ROUNDS = 6;
-const PS_MATCH_TIMEOUT_MS = 120_000;
+/** No extra rounds after regulation (playtest: "3 me, 3 you, nothing more"). */
+const MAX_SUDDEN_DEATH_ROUNDS = 0;
+/** 6 × (5s choose + 2s reveal) = 42s max; safety net just above. */
+const PS_MATCH_TIMEOUT_MS = 55_000;
 
 type Phase = "choosing" | "reveal" | "ended";
 
@@ -41,12 +44,14 @@ type Reveal = {
   keeperId: string;
   shooterZone: Zone;
   keeperZone: Zone;
+  /** False when the keeper never picked (defaults to center = "stays put"). */
+  keeperPicked: boolean;
   scored: boolean;
 };
 
 type ServerState = {
   phase: Phase;
-  /** 1-based round. Rounds 1..6 regulation, 7..12 sudden death. */
+  /** 1-based round, 1..6. */
   round: number;
   goals: { p1: number; p2: number };
   phaseEndsAt: number;
@@ -83,10 +88,10 @@ function createPenaltyShootoutMatch(ctx: MatchContext): MatchSession {
     ended: false,
   };
 
-  // Regulation is played in HALVES (playtest feedback — alternating every
-  // round made the role flip-flop confusing): rounds 1-3 p1 shoots, rounds
-  // 4-6 p2 shoots. Sudden death alternates per round so each extra pair
-  // gives both players a shot.
+  // Played in HALVES (playtest feedback — alternating every round made the
+  // role flip-flop confusing): rounds 1-3 p1 shoots, rounds 4-6 p2 shoots.
+  // (The `> REG_ROUNDS` branch is only reachable if sudden death is ever
+  // re-enabled via MAX_SUDDEN_DEATH_ROUNDS.)
   function shooter(): typeof p1 {
     if (state.round <= REG_ROUNDS) {
       return state.round <= REG_ROUNDS / 2 ? p1 : p2;
@@ -145,6 +150,7 @@ function createPenaltyShootoutMatch(ctx: MatchContext): MatchSession {
       keeperId: keeper().playerId,
       shooterZone,
       keeperZone,
+      keeperPicked: state.keeperChoice !== null,
       scored,
     };
     state.phase = "reveal";
@@ -154,8 +160,8 @@ function createPenaltyShootoutMatch(ctx: MatchContext): MatchSession {
   /** After a reveal finishes: end the match or start the next round. */
   function advance(now: number) {
     const r = state.round;
-    // Decision points: after round 6, then after each completed sudden-
-    // death PAIR (rounds 8, 10, 12) — both players must have shot equally.
+    // Decision point: after round 6 (and after each completed pair if
+    // sudden death is ever re-enabled).
     const pairComplete =
       r === REG_ROUNDS ||
       (r > REG_ROUNDS && (r - REG_ROUNDS) % 2 === 0);
@@ -163,8 +169,20 @@ function createPenaltyShootoutMatch(ctx: MatchContext): MatchSession {
       endByGoals();
       return;
     }
+    // Decided early? p1 has finished shooting after round 3, so p2 leading
+    // at any point wins; p1 wins once p2's remaining shots can't catch up.
+    if (r >= REG_ROUNDS / 2 && r < REG_ROUNDS) {
+      const p2Remaining = REG_ROUNDS - r;
+      if (
+        state.goals.p2 > state.goals.p1 ||
+        state.goals.p1 > state.goals.p2 + p2Remaining
+      ) {
+        endByGoals();
+        return;
+      }
+    }
     if (r >= REG_ROUNDS + MAX_SUDDEN_DEATH_ROUNDS) {
-      // Exhausted sudden death, still level → null winner.
+      // Still level after the last round → null winner (coin flip).
       endLevel();
       return;
     }
@@ -198,12 +216,12 @@ function createPenaltyShootoutMatch(ctx: MatchContext): MatchSession {
     state.phase = "ended";
     broadcastState();
     ctx.endMatch({
-      winnerId: null, // still level after max sudden death → draw
+      winnerId: null, // level after 6 → the gamemode coin-flips
       scores: {
         [p1.playerId]: state.goals.p1,
         [p2.playerId]: state.goals.p2,
       },
-      summary: `still level ${state.goals.p1}–${state.goals.p2} after sudden death`,
+      summary: `level ${state.goals.p1}–${state.goals.p2} after six · coin flip`,
     });
   }
 

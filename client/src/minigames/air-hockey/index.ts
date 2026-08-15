@@ -1,5 +1,5 @@
 // Air Hockey client. p1 view is flipped vertically so each player's own
-// goal is at the top of their phone and own paddle at the bottom — natural
+// goal and own paddle are at the BOTTOM of their phone — natural
 // "you're at the bottom of the table" feel. Drag to move own paddle. Wire
 // is canonical (p1 at top in canonical orientation).
 

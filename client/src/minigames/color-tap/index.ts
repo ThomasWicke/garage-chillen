@@ -26,6 +26,7 @@ type StateMsg = {
   signalColor: Color;
   signalEndsAt: number;
   resultEndsAt: number;
+  deadlineAt?: number;
   players: Record<
     string,
     { strikes: number; eliminated: boolean; responseColor: Color | null }
@@ -108,6 +109,7 @@ function createColorTapMatchClient(
 
     const aliveCount = Object.values(msg.players).filter((p) => !p.eliminated).length;
     const total = Object.keys(msg.players).length;
+    // No clock: the deadline is a safety cap, not part of the game.
     ctx.setMatchScore(`${aliveCount}/${total} alive`);
   }
 

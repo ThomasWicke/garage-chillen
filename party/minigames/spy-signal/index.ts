@@ -35,7 +35,9 @@ const DISCUSS_MS = 60_000;
 const VOTE_MS = 20_000;
 const REVEAL_MS = 12_000;
 const SECRET_RESEND_MS = 500;
-const SS_MATCH_TIMEOUT_MS = 150_000;
+const TOTAL_MS = PEEK_MS + DISCUSS_MS + VOTE_MS + REVEAL_MS;
+/** peek + discuss + vote + reveal = 102s exactly; safety net just above. */
+const SS_MATCH_TIMEOUT_MS = TOTAL_MS + 8_000;
 
 const GROUP_BONUS = 2;
 const RIGHT_VOTE = 2;
@@ -184,6 +186,13 @@ function createSignalImposterMatch(ctx: MatchContext): MatchSession {
       candidates: state.candidates,
       phaseEndsAt: state.phaseEndsAt,
       deadlineAt: ctx.deadlineAt,
+      // Real end of the match: phases chain from GO, so it's exact — the
+      // client's clock counts to this, not to the safety-net deadline.
+      // (An early "imposter fled" reveal ends when its phase does.)
+      endsAt:
+        state.phase === "reveal" || state.phase === "ended"
+          ? state.phaseEndsAt
+          : ctx.startAt + TOTAL_MS,
       points,
       votedIds,
       connected: [...connected],

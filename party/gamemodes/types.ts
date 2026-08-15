@@ -13,6 +13,7 @@ import type {
   MiniGameDefinition,
   MiniGamePlayer,
 } from "../minigames/types";
+import type { TutorialStyle } from "../protocol";
 
 export type { MiniGamePlayer, MatchEndResult };
 
@@ -60,6 +61,10 @@ export type GamemodeContext = {
   /** Present in test lobbies. `fast`: shorten intro/between waits and
    *  auto-resolve matches whose participants are all bots. */
   test?: { fast: boolean };
+  /** Host-editable lobby settings relevant to the gamemode. */
+  settings: { tutorial: TutorialStyle };
+  /** True if `playerId` is the lobby's current host (GM). */
+  isGm: (playerId: string) => boolean;
 };
 
 export type GamemodeSession = {
@@ -87,6 +92,9 @@ export type GamemodeSession = {
    *  (bye, eliminated, spectating). Used by test bots to mirror human
    *  inputs into the bot's OWN match. Default: null. */
   matchIdFor?: (playerId: string) => string | null;
+  /** Tutorial style "paused": the host released the held intro — start the
+   *  first round now. No-op outside a held intro. */
+  startNow?: () => void;
   cleanup: () => void;
 };
 

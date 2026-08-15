@@ -67,6 +67,7 @@ function createSumoPushMatchClient(
   let lastScores: { p1: number; p2: number } | null = null;
 
   let role: Role = "spectator";
+  let firstTo = 3;
   let fieldW = 500;
   let fieldH = 800;
   let arenaR = 220;
@@ -201,7 +202,7 @@ function createSumoPushMatchClient(
 
     const myScore = role === "p2" ? msg.scores.p2 : msg.scores.p1;
     const theirScore = role === "p2" ? msg.scores.p1 : msg.scores.p2;
-    ctx.setMatchScore(`${myScore} – ${theirScore}`);
+    ctx.setMatchScore(`${myScore} – ${theirScore} · first to ${firstTo}`);
 
     // Visual ring-out cue — the silent respawn read as a glitch.
     if (
@@ -220,19 +221,20 @@ function createSumoPushMatchClient(
     lastScores = { ...msg.scores };
 
     statusEl.textContent = statusLine(
-      role === "spectator" ? null : "drag from yourself to lunge",
+      role === "spectator" ? null : "drag & release to lunge",
       formatRemaining(msg.deadlineAt),
     );
   }
 
   function applyWelcome(msg: WelcomeMsg) {
+    if (typeof msg.firstTo === "number") firstTo = msg.firstTo;
     if (msg.players.p1.playerId === ctx.selfPlayerId) role = "p1";
     else if (msg.players.p2.playerId === ctx.selfPlayerId) role = "p2";
     else role = "spectator";
     statusEl.textContent =
       role === "spectator"
         ? `${msg.players.p1.nickname} vs ${msg.players.p2.nickname}`
-        : "drag from yourself to lunge";
+        : "drag & release to lunge";
     buildScene(msg);
   }
 
@@ -259,7 +261,7 @@ function createSumoPushMatchClient(
 
 const SumoPushClient: MiniGameClientDefinition = {
   id: "sumo-push",
-  controlsHint: "drag from your wrestler & release to lunge — you start at the bottom",
+  controlsHint: "drag anywhere & release to lunge that way — longer drag = harder push · first to 3 ring-outs",
   createMatch: createSumoPushMatchClient,
 };
 

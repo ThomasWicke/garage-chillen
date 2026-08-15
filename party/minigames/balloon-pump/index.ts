@@ -23,7 +23,8 @@ export const BP_ROUND_MS = 20_000;
 const MIN_POP = 8;
 const MAX_POP = 24; // inclusive
 const RESULTS_MS = 3_000;
-const BP_MATCH_TIMEOUT_MS = 120_000;
+/** 3 × (20s + 3s) = 69s max; safety net just above. */
+const BP_MATCH_TIMEOUT_MS = 80_000;
 
 type Status = "pumping" | "banked" | "popped";
 type Phase = "pumping" | "round-results" | "ended";

@@ -25,7 +25,8 @@ const MAX_COUNT_MS = 16_000;
 const RESULTS_MS = 5_000;
 /** Errors are clamped so a no-show tap at 16s isn't infinitely worse. */
 const MAX_ERROR_MS = 5_000;
-const TS_MATCH_TIMEOUT_MS = 120_000;
+/** 3 × (2.5s arm + ≤16s count + 5s results) = 70.5s max; safety net above. */
+const TS_MATCH_TIMEOUT_MS = 80_000;
 
 type Phase = "arm" | "counting" | "results";
 
@@ -112,6 +113,9 @@ function createTenSecondsMatch(ctx: MatchContext): MatchSession {
       // Who has locked in this round — but never their times (suspense until
       // results; broadcast reaches spectators too).
       tappedIds: [...state.taps.keys()],
+      /** Connected participants — the "N/M stopped" denominator (rounds end
+       *  once all of THESE have tapped, so the roster size would mislead). */
+      activeCount: state.connected.size,
       totals,
       // Round results only exist (and are only revealed) during the results
       // phase. Re-broadcast every tick → reconnects during results resync.

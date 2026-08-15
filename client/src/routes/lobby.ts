@@ -23,6 +23,7 @@ import "../gamemodes"; // ensure gamemode client self-registration
 import type { GamemodeClientSession } from "../gamemodes/types";
 import { LobbyConnection, type ConnectionStatus } from "../socket";
 import { openGamePickerDrawer } from "../ui/game-picker-drawer";
+import { openSettingsDrawer } from "../ui/settings-drawer";
 import { renderLobbyView } from "../ui/lobby-view";
 import { renderPreparingView } from "../ui/preparing-view";
 import { renderRoundResultsView } from "../ui/round-results-view";
@@ -32,7 +33,9 @@ import { getMiniGameClient } from "../minigames";
 import "../minigames"; // ensure mini-game client self-registration
 import {
   BOT_STRATEGIES,
+  DEFAULT_LOBBY_SETTINGS,
   isTestLobbyCode,
+  type LobbySettings,
   type LobbyState,
   type MiniGameInfo,
   type PublicPlayer,
@@ -74,7 +77,37 @@ type ViewState = {
   test: { enabled: boolean; fast: boolean };
   /** Last mini-game that ran this visit — the test panel's "again" button. */
   lastMinigameId: string | null;
+  /** Host-editable lobby settings (server-authoritative copy). */
+  settings: LobbySettings;
+  /** False while the room still runs on defaults. */
+  settingsCustom: boolean;
 };
+
+const SETTINGS_KEY = "gc.lobby-settings";
+
+/** The host's own last settings, remembered across visits — rooms are
+ *  ephemeral, the garage's preferences aren't. */
+function loadSavedSettings(): LobbySettings | null {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if (!raw) return null;
+    const p = JSON.parse(raw) as Partial<LobbySettings>;
+    return {
+      shuffleWeights:
+        p.shuffleWeights && typeof p.shuffleWeights === "object" ? p.shuffleWeights : {},
+      tutorial: p.tutorial ?? DEFAULT_LOBBY_SETTINGS.tutorial,
+    };
+  } catch {
+    return null;
+  }
+}
+function saveSettings(s: LobbySettings): void {
+  try {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
+  } catch {
+    /* ignore */
+  }
+}
 
 export function renderLobby(rawCode: string): () => void {
   const code = rawCode.toUpperCase();
@@ -114,7 +147,23 @@ export function renderLobby(rawCode: string): () => void {
     editErrorTimer: null,
     test: { enabled: isTestLobbyCode(code), fast: true },
     lastMinigameId: null,
+    settings: { shuffleWeights: {}, tutorial: DEFAULT_LOBBY_SETTINGS.tutorial },
+    settingsCustom: false,
   };
+  /** Push the remembered settings to a fresh room at most once per visit. */
+  let pushedSavedSettings = false;
+  /** A fresh room on defaults + I'm the host + I have remembered settings →
+   *  apply them once (the garage's usual setup). Checked when either the
+   *  settings or the player-list (which carries gmPlayerId) arrives, since
+   *  their order on identify puts settings first. */
+  function maybePushSavedSettings() {
+    if (pushedSavedSettings || state.settingsCustom) return;
+    const isGm = !!state.selfPlayerId && state.gmPlayerId === state.selfPlayerId;
+    if (!isGm) return;
+    pushedSavedSettings = true;
+    const saved = loadSavedSettings();
+    if (saved) sendSettings(saved);
+  }
 
   function isEditEligible(): boolean {
     if (state.lobbyState !== "idle") return false;
@@ -168,6 +217,18 @@ export function renderLobby(rawCode: string): () => void {
   }
 
   let drawerClose: (() => void) | null = null;
+  let settingsClose: (() => void) | null = null;
+
+  function sendSettings(partial: Partial<LobbySettings>) {
+    conn.send({ scope: "lobby", type: "set-settings", settings: partial });
+    // Optimistic local merge + remember for next time; the server's
+    // broadcast confirms.
+    state.settings = {
+      shuffleWeights: partial.shuffleWeights ?? state.settings.shuffleWeights,
+      tutorial: partial.tutorial ?? state.settings.tutorial,
+    };
+    saveSettings(state.settings);
+  }
 
   let activeGamemodeSession: GamemodeClientSession | null = null;
   let activeGamemodeKey: string | null = null; // `${gamemodeId}:${minigameId}`
@@ -250,12 +311,25 @@ export function renderLobby(rawCode: string): () => void {
           editError: state.editError,
           editingNickname: state.editingNickname && editable,
           nicknameDraft: state.nicknameDraft,
+          settings: state.settings,
           test: state.test.enabled
             ? { fast: state.test.fast, lastMinigameId: state.lastMinigameId }
             : undefined,
         },
         sceneEl,
         {
+          onOpenSettings: () => {
+            if (settingsClose) return;
+            settingsClose = openSettingsDrawer({
+              minigames: state.availableMinigames,
+              settings: state.settings,
+              onChange: (partial) => sendSettings(partial),
+              onClose: () => {
+                settingsClose = null;
+                rerender();
+              },
+            });
+          },
           onTestAddBot: () =>
             conn.send({ scope: "lobby", type: "test", action: "add-bot" }),
           onTestRemoveBot: () =>
@@ -408,6 +482,7 @@ export function renderLobby(rawCode: string): () => void {
         activeGamemodeSession = gmDef.createSession({
           container: mount,
           selfPlayerId: state.selfPlayerId ?? "",
+          isGm: () => !!state.selfPlayerId && state.gmPlayerId === state.selfPlayerId,
           lobbyPlayers: state.players.map((p) => ({
             playerId: p.playerId,
             nickname: p.nickname,
@@ -492,6 +567,7 @@ export function renderLobby(rawCode: string): () => void {
         state.players = msg.players;
         state.gmPlayerId = msg.gmPlayerId;
         state.gmGraceUntil = msg.gmGraceUntil;
+        maybePushSavedSettings();
         // Persist server-truth identity (name + avatar) to localStorage so
         // the next visit defaults to the latest values.
         const self = state.players.find(
@@ -524,6 +600,10 @@ export function renderLobby(rawCode: string): () => void {
         state.sessionScores = msg.scores;
       } else if (msg.scope === "lobby" && msg.type === "test-state") {
         state.test = { enabled: msg.enabled, fast: msg.fast };
+      } else if (msg.scope === "lobby" && msg.type === "settings") {
+        state.settings = msg.settings;
+        state.settingsCustom = msg.custom;
+        maybePushSavedSettings();
       } else if (msg.scope === "lobby" && msg.type === "state") {
         state.lobbyState = msg.state;
         state.sequence = msg.sequence ?? null;
@@ -588,6 +668,10 @@ export function renderLobby(rawCode: string): () => void {
     if (drawerClose) {
       try { drawerClose(); } catch {}
       drawerClose = null;
+    }
+    if (settingsClose) {
+      try { settingsClose(); } catch {}
+      settingsClose = null;
     }
     teardownGamemode();
     conn.close();

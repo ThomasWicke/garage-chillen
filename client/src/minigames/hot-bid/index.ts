@@ -18,7 +18,7 @@ import {
   type CrewAsset,
 } from "@kaplayjs/crew";
 import { avatarSrc } from "../../identity";
-import { formatRemaining, statusLine } from "../clock";
+import { statusLine } from "../clock";
 import { createMatchFlash } from "../flash";
 import { registerMiniGameClient } from "../registry";
 import type {
@@ -416,7 +416,7 @@ function createHotBidMatchClient(ctx: MatchClientContext): MatchClientSession {
         : msg.phase === "reveal"
           ? `reveal · ${phaseSecs}s`
           : "final results",
-      formatRemaining(msg.deadlineAt),
+      // No total clock — bidding rounds end early once everyone locks in.
     );
 
     // Wallet (own balance prominent; spectators have none).

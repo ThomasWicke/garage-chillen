@@ -19,6 +19,7 @@ import type {
   MatchClientSession,
 } from "../../minigames/types";
 import { showWarmupOverlay } from "../../ui/warmup-overlay";
+import { bindHeldIntro, heldIntroHtml } from "../../ui/held-intro";
 import { registerGamemodeClient } from "../registry";
 import type {
   GamemodeClientContext,
@@ -52,6 +53,8 @@ type BracketStateMsg = {
   phase: Phase;
   currentRound: number;
   phaseEndsAt: number | null;
+  /** Tutorial "paused": the intro is held until the host taps START. */
+  awaitingHost?: boolean;
   /** Server-time when the current round's matches start simulating;
    *  warm-up overlay until then. */
   goAt: number | null;
@@ -215,6 +218,7 @@ function createTournamentClientSession(
       // Spectators should never be sending — defensive no-op.
       send: isSpectator ? () => {} : (m) => ctx.sendMatch(info.matchId, m),
       setMatchScore: (text) => ctx.setMatchScore(text),
+      isHost: () => ctx.isGm(),
     };
     try {
       activeMatchSession = ctx.miniGame.createMatch(matchCtx);
@@ -339,13 +343,16 @@ function createTournamentClientSession(
       })
       .join("");
 
+    const held = bracketState.phase === "intro" && bracketState.awaitingHost === true;
     bracketEl.innerHTML = `
       <div class="tournament-header">
         <div class="tournament-phase">${phaseLabel.title}</div>
         ${phaseLabel.sub ? `<div class="tournament-phase-sub">${phaseLabel.sub}</div>` : ""}
       </div>
+      ${held ? heldIntroHtml(ctx.miniGame.controlsHint ?? null, ctx.isGm()) : ""}
       <div class="tb-vertical">${rowsHtml}</div>
     `;
+    bindHeldIntro(bracketEl, () => ctx.sendGamemode({ type: "tutorial-start" }));
   }
 
   function bracketMatchHtml(
@@ -393,7 +400,9 @@ function createTournamentClientSession(
         // which game is about to run.
         return {
           title: ctx.miniGameDisplayName,
-          sub: `Tournament · starts in ${sec}…`,
+          sub: s.awaitingHost
+            ? "Tournament · waiting for the host"
+            : `Tournament · starts in ${sec}…`,
         };
       }
       case "round":
@@ -421,6 +430,9 @@ function createTournamentClientSession(
     if (countdownTimer) return;
     countdownTimer = setInterval(() => {
       if (!bracketState) return;
+      // Held intro: no countdown, and a 250ms rebuild would replace the
+      // START button under the host's finger.
+      if (bracketState.awaitingHost) return;
       if (bracketState.phase === "intro" || bracketState.phase === "between") {
         if (!activeMatchToShow()) renderBracket();
       }

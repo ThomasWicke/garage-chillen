@@ -19,7 +19,8 @@ const RESULT_HOLD_MS = 1800;
 /** If neither player taps after GO, score the round a draw instead of
  *  hanging until the match deadline. */
 const GO_TIMEOUT_MS = 10_000;
-const RD_MATCH_TIMEOUT_MS = 90_000;
+/** Worst case 5 × (4s + 10s + 1.8s) = 79s; 90s left ~11s of headroom. */
+const RD_MATCH_TIMEOUT_MS = 120_000;
 
 type Phase = "armed" | "go" | "result" | "ended";
 

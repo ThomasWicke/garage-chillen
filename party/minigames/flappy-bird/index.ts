@@ -211,14 +211,19 @@ function createFlappyBirdMatch(ctx: MatchContext): MatchSession {
     const winnerNick = winnerId
       ? (players.find((p) => p.playerId === winnerId)?.nickname ?? "?")
       : null;
+    // Rank 1 with nobody alive = the last bird to die (or a same-tick group)
+    // — say "lasted longest", not "survives".
+    const anyoneAlive = [...state.birds.values()].some((b) => b.alive);
     broadcastState();
     ctx.endMatch({
       winnerId,
       placements,
       summary: winnerNick
-        ? `${winnerNick} survives`
+        ? anyoneAlive
+          ? `${winnerNick} survives`
+          : `everyone died · ${winnerNick} lasted longest`
         : topIds.length > 1
-          ? "double KO · tie"
+          ? `${topIds.length}-way KO · tie`
           : "everyone died",
     });
   }

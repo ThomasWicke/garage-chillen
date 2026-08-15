@@ -5,7 +5,7 @@
 
 import { avatarSrc } from "../../identity";
 import { registerMiniGameClient } from "../registry";
-import { formatRemaining, statusLine } from "../clock";
+import { statusLine } from "../clock";
 import type {
   MatchClientContext,
   MatchClientSession,
@@ -216,7 +216,7 @@ function createQuickMathMatchClient(
     statusEl.textContent = statusLine(
       `round ${msg.round}/${msg.rounds ?? totalRounds}`,
       msg.phase === "question" ? `${secs}s` : null,
-      formatRemaining(msg.deadlineAt),
+      // No total clock — questions end early once everyone has answered.
     );
 
     if (msg.phase === "question") {
@@ -278,7 +278,7 @@ function createQuickMathMatchClient(
 
 const QuickMathClient: MiniGameClientDefinition = {
   id: "quick-math",
-  controlsHint: "solve it, tap the answer — fastest correct scores +3",
+  controlsHint: "tap the answer — fastest correct +3, any other correct +1",
   createMatch: createQuickMathMatchClient,
 };
 

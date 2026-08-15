@@ -1,10 +1,9 @@
 // Marble Race — last-man-standing FFA betting spectacle. Nobody steers
 // anything: six fixed crew-character marbles (the "horses") drop through a
 // plinko peg board; everyone bets on a racer, watches the chaos live, and
-// scores points when their pick places. Two races; most points wins.
+// scores points when their pick places. ONE race (playtest: two dragged).
 //
-// Phases (tick-driven): betting (12s) → race (physics, ≤30s) → results (6s),
-// twice. Bets are secret during betting (only WHO has bet is broadcast; the
+// Phases (tick-driven): betting (12s) → race (physics, ≤45s) → results (6s). Bets are secret during betting (only WHO has bet is broadcast; the
 // actual picks are revealed at race start).
 
 import { registerMiniGame } from "../registry";
@@ -15,35 +14,40 @@ import type {
 } from "../types";
 
 export const MDBY_FIELD_W = 500;
-export const MDBY_FIELD_H = 800;
+export const MDBY_FIELD_H = 880;
 export const MDBY_PEG_RADIUS = 7;
 export const MDBY_MARBLE_RADIUS = 13;
-export const MDBY_FINISH_Y = 720;
+export const MDBY_FINISH_Y = 800;
 
 /** The six racers, fixed crew characters — clients map these keys to
  *  @kaplayjs/crew sprites. Order = racer index 0..5. */
 export const MDBY_RACERS = ["bean", "ghosty", "mark", "kat", "bag", "bobo"];
 
 const NUM_RACERS = 6;
-const NUM_RACES = 2;
+const NUM_RACES = 1;
 const BETTING_MS = 12_000;
 const RESULTS_MS = 6_000;
-const RACE_CAP_MS = 30_000;
+const RACE_CAP_MS = 45_000;
 /** After the winner crosses, keep simulating this long to record 2nd. */
-const SECOND_PLACE_WINDOW_MS = 1_500;
+const SECOND_PLACE_WINDOW_MS = 3_000;
 const WIN_POINTS = 3;
 const SECOND_POINTS = 1;
 
-const GRAVITY = 500;
-const MAX_FALL_SPEED = 500;
-const RESTITUTION = 0.75;
+// Floaty on purpose (playtest: "over too quickly, wants spectacular
+// bounces"). Tuned with an offline replica of stepPhysics over 200 races:
+// the old 500/500/0.75 on 8 rows had the winner crossing at a 3.6s median;
+// this (14 rows × 7 cols) gives ~11s median, 7–19s range, no stalls.
+const GRAVITY = 120;
+const MAX_FALL_SPEED = 130;
+const RESTITUTION = 0.88;
 /** Random tangent kick on peg bounces so runs diverge. */
-const TANGENT_JITTER = 60;
+const TANGENT_JITTER = 70;
 /** Re-send each player's own (secret) bet this often during betting so a
  *  reconnect mid-betting restores their highlighted pick. */
 const SECRET_RESEND_MS = 500;
 
-const MDBY_MATCH_TIMEOUT_MS = 180_000;
+/** 12s betting + ≤45s race + 6s results = 63s max; safety net just above. */
+const MDBY_MATCH_TIMEOUT_MS = 75_000;
 
 type Peg = { x: number; y: number };
 
@@ -85,20 +89,24 @@ type State = {
   ended: boolean;
 };
 
+const PEG_COLS = 7;
+const PEG_ROW_STEP = 50;
+
 function buildPegs(): Peg[] {
   const pegs: Peg[] = [];
+  const gap = MDBY_FIELD_W / PEG_COLS; // ~71px; marbles are 26px wide
   let rowIdx = 0;
-  for (let y = 150; y <= 650; y += 70) {
+  // 14 rows, 110..760 — the finish line is at 800.
+  for (let y = 110; y <= 760; y += PEG_ROW_STEP) {
     if (rowIdx % 2 === 0) {
-      // 6 pegs: 50..450
-      for (let i = 0; i < 6; i++) pegs.push({ x: 50 + i * 80, y });
+      for (let i = 0; i < PEG_COLS; i++) pegs.push({ x: gap / 2 + i * gap, y });
     } else {
-      // Offset half a column: 90..410, plus wall pegs at 10/490 — without
-      // them a marble can hug the wall corridor past every peg, and the two
-      // edge lanes win far more often than the middle (bad betting odds).
+      // Offset half a column, plus wall pegs at 10/490 — without them a
+      // marble can hug the wall corridor past every peg, and the two edge
+      // lanes win far more often than the middle (bad betting odds).
       pegs.push({ x: 10, y });
-      for (let i = 0; i < 5; i++) pegs.push({ x: 90 + i * 80, y });
-      pegs.push({ x: 490, y });
+      for (let i = 0; i < PEG_COLS - 1; i++) pegs.push({ x: gap + i * gap, y });
+      pegs.push({ x: MDBY_FIELD_W - 10, y });
     }
     rowIdx++;
   }

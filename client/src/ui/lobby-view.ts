@@ -8,10 +8,12 @@
 
 import { starData } from "@kaplayjs/crew";
 import { avatarSrc } from "../identity";
-import type {
-  MiniGameInfo,
-  PublicPlayer,
-  SequencePublicState,
+import {
+  effectiveShuffleWeight,
+  type LobbySettings,
+  type MiniGameInfo,
+  type PublicPlayer,
+  type SequencePublicState,
 } from "../../../party/protocol";
 
 const STAR_SRC = starData.kind === "Sprite" ? starData.outlined : "";
@@ -37,6 +39,8 @@ export type LobbyViewState = {
   /** Present in test lobbies (code starts with TEST): renders the debug
    *  panel for the GM. */
   test?: { fast: boolean; lastMinigameId: string | null };
+  /** Host settings — Shuffle is only enabled while the pool is non-empty. */
+  settings: LobbySettings;
 };
 
 export type LobbyViewHandlers = {
@@ -45,6 +49,7 @@ export type LobbyViewHandlers = {
   onPauseSequence: () => void;
   onResumeSequence: () => void;
   onEndSequence: () => void;
+  onOpenSettings: () => void;
   onCycleAvatar: () => void;
   // Test-lobby debug panel (GM only).
   onTestAddBot: () => void;
@@ -121,6 +126,9 @@ export function renderLobbyView(
   pickBtn?.addEventListener("click", () => handlers.onPickMinigame());
   const shuffleBtn = root.querySelector<HTMLButtonElement>("[data-action='start-shuffle']");
   shuffleBtn?.addEventListener("click", () => handlers.onStartShuffle());
+  root
+    .querySelector<HTMLButtonElement>("[data-action='open-settings']")
+    ?.addEventListener("click", () => handlers.onOpenSettings());
   const pauseBtn = root.querySelector<HTMLButtonElement>("[data-action='pause-sequence']");
   pauseBtn?.addEventListener("click", () => handlers.onPauseSequence());
   const resumeBtn = root.querySelector<HTMLButtonElement>("[data-action='resume-sequence']");
@@ -190,11 +198,18 @@ function renderControls(
     const host = s.players.find((p) => p.playerId === s.gmPlayerId);
     return `<div class="lobby-hint">waiting for <strong>${escapeHtml(host?.nickname ?? "the host")}</strong> to start a game…</div>`;
   }
-  const someEligible = s.availableMinigames.some(
-    (m) => connectedCount >= m.minPlayers && connectedCount <= m.maxPlayers,
+  // Shuffle needs at least one game that is (a) in the host's pool and
+  // (b) playable with this many players — the same rule the server uses.
+  const poolPlayable = s.availableMinigames.some(
+    (m) =>
+      effectiveShuffleWeight(m, s.settings) > 0 &&
+      connectedCount >= m.minPlayers &&
+      connectedCount <= m.maxPlayers,
   );
   const hasGames = s.availableMinigames.length > 0;
-  const canShuffle = hasGames && someEligible;
+  const canShuffle = hasGames && poolPlayable;
+  const tutorialTag =
+    s.settings.tutorial === "fast" ? "" : ` · ${s.settings.tutorial} tutorial`;
   return `
     <div class="gm-actions">
       <button class="primary mg-btn" data-action="pick-minigame" ${hasGames ? "" : "disabled"}>
@@ -203,7 +218,17 @@ function renderControls(
       <button class="primary mg-btn" data-action="start-shuffle" ${canShuffle ? "" : "disabled"}>
         <span class="mg-name">Shuffle</span>
       </button>
+      <button class="mg-btn settings-btn" data-action="open-settings" title="lobby settings" aria-label="lobby settings">
+        <span class="settings-gear">⚙</span>
+      </button>
     </div>
+    ${
+      !poolPlayable && hasGames
+        ? `<div class="hint">shuffle pool is empty for ${connectedCount} players — check ⚙ settings</div>`
+        : tutorialTag
+          ? `<div class="hint">shuffle pool ready${tutorialTag}</div>`
+          : ""
+    }
   `;
 }
 

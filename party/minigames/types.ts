@@ -56,6 +56,9 @@ export type MatchContext = {
   ) => void;
   /** End the match. Idempotent — only the first call is honored. */
   endMatch: (result: MatchEndResult) => void;
+  /** True if `playerId` is the lobby's current host (GM). Lets social
+   *  games accept host-only actions like "end the discussion early". */
+  isHost: (playerId: string) => boolean;
   log: (...args: unknown[]) => void;
 };
 

@@ -17,7 +17,8 @@ import type {
 const QM_ROUNDS = 8;
 const QUESTION_MS = 8_000;
 const REVEAL_MS = 2_500;
-const QM_MATCH_TIMEOUT_MS = 150_000;
+/** 8 × (8s + 2.5s) = 84s max; safety net just above. */
+const QM_MATCH_TIMEOUT_MS = 95_000;
 
 const FIRST_CORRECT_POINTS = 3;
 const OTHER_CORRECT_POINTS = 1;

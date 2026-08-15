@@ -35,7 +35,8 @@ const BID_MS = 12_000;
 const REVEAL_MS = 5_000;
 /** sendTo is not replayed on reconnect — re-send own-bid secrets this often. */
 const SECRET_RESEND_MS = 500;
-const HB_MATCH_TIMEOUT_MS = 240_000;
+/** 8 cards × (12s bid + 5s reveal) = 136s max; safety net just above. */
+const HB_MATCH_TIMEOUT_MS = 150_000;
 
 type Phase = "bidding" | "reveal" | "ended";
 

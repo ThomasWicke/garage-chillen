@@ -41,8 +41,11 @@ const BETWEEN_MS = 5_000;
 /** Test-lobby fast mode: keep waits just long enough to see the bracket. */
 const FAST_INTRO_MS = 2_000;
 const FAST_BETWEEN_MS = 2_000;
-/** Scene visible but simulation frozen for this long before GO. */
+/** Scene visible but simulation frozen for this long before GO. Tutorial
+ *  style "slow" stretches the FIRST round's warm-up (where the hint is
+ *  new); later rounds use the normal length. */
 const WARMUP_MS = 3_000;
+const SLOW_WARMUP_MS = 7_000;
 const MATCH_FORCE_GRACE_MS = 5_000;
 
 type Phase = "intro" | "round" | "between" | "complete";
@@ -72,6 +75,9 @@ function createTournamentSession(ctx: GamemodeContext): GamemodeSession {
   const introMs = fast ? FAST_INTRO_MS : INTRO_MS;
   const betweenMs = fast ? FAST_BETWEEN_MS : BETWEEN_MS;
 
+  const tutorial = ctx.settings.tutorial;
+  /** Tutorial "paused": the intro is HELD until the host taps START. */
+  let awaitingHost = tutorial === "paused";
   let phase: Phase = "intro";
   let phaseEndsAt = Date.now() + introMs;
   let currentRound = 0;
@@ -95,7 +101,12 @@ function createTournamentSession(ctx: GamemodeContext): GamemodeSession {
       phase,
       currentRound,
       goAt: phase === "round" ? roundGoAt : null,
-      phaseEndsAt: phase === "intro" || phase === "between" ? phaseEndsAt : null,
+      phaseEndsAt:
+        (phase === "intro" && !awaitingHost) || phase === "between"
+          ? phaseEndsAt
+          : null,
+      /** Tutorial "paused": intro held until the host starts it. */
+      awaitingHost: phase === "intro" && awaitingHost,
       bracket: toPublicBracket(bracket),
       activeMatches: [...activeMatches.values()].map((m) => ({
         matchId: m.matchId,
@@ -157,7 +168,9 @@ function createTournamentSession(ctx: GamemodeContext): GamemodeSession {
     setEveryoneClicker(true);
     const now = Date.now();
     // Scene mounts immediately; simulation starts after the warm-up overlay.
-    const startAt = now + WARMUP_MS;
+    const warmupMs =
+      currentRound === 0 && tutorial === "slow" ? SLOW_WARMUP_MS : WARMUP_MS;
+    const startAt = now + warmupMs;
     roundGoAt = startAt;
 
     type Plan = {
@@ -250,6 +263,7 @@ function createTournamentSession(ctx: GamemodeContext): GamemodeSession {
         },
         endMatch: (result) =>
           completeMatch(plan.bracketMatch.matchId, result),
+        isHost: (pid) => ctx.isGm(pid),
         log: (...args) =>
           ctx.log(`[match ${plan.bracketMatch.matchId}]`, ...args),
       };
@@ -387,17 +401,25 @@ function createTournamentSession(ctx: GamemodeContext): GamemodeSession {
 
   // ─── kick off ────────────────────────────────────────────────────────────
 
-  // Intro: show the bracket for introMs, then start round-0 matches.
+  // Intro: show the bracket for introMs, then start round-0 matches — or,
+  // for tutorial style "paused", hold here until the host taps START.
   setEveryoneClicker(true);
   broadcastBracketState();
-  phaseTimer = setTimeout(() => {
-    phaseTimer = null;
-    if (ended) return;
-    startCurrentRoundMatches();
-  }, introMs);
+  if (!awaitingHost) {
+    phaseTimer = setTimeout(() => {
+      phaseTimer = null;
+      if (ended) return;
+      startCurrentRoundMatches();
+    }, introMs);
+  }
 
   return {
     tick: tickFn,
+    startNow() {
+      if (ended || phase !== "intro" || !awaitingHost) return;
+      awaitingHost = false;
+      startCurrentRoundMatches();
+    },
     onMatchMessage(playerId, matchId, msg) {
       const am = activeMatches.get(matchId);
       if (!am || am.ended) return;

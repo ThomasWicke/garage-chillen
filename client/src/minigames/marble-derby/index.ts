@@ -22,7 +22,7 @@ import {
   markData,
 } from "@kaplayjs/crew";
 import { avatarSrc } from "../../identity";
-import { formatRemaining, statusLine } from "../clock";
+import { statusLine } from "../clock";
 import { createMatchFlash } from "../flash";
 import { registerMiniGameClient } from "../registry";
 import type {
@@ -122,19 +122,23 @@ function createMarbleDerbyMatchClient(
         color: #f2f2f5; user-select: none; pointer-events: none;
       }
       .mdby-banner .mdby-count { color: #abdd64; }
+      /* One compact row of six — the track gets the height instead. */
       .mdby-panel {
-        flex: none; display: grid; grid-template-columns: repeat(3, 1fr);
-        gap: 6px; padding: 8px; background: #101020;
+        flex: none; display: grid; grid-template-columns: repeat(6, 1fr);
+        gap: 4px; padding: 6px 6px 4px; background: #101020;
       }
       .mdby-card {
         display: flex; flex-direction: column; align-items: center;
-        gap: 2px; min-height: 64px; padding: 6px 2px 4px;
-        background: #1a1a2c; border: 2px solid #2a2a3a; border-radius: 10px;
+        gap: 1px; min-height: 58px; padding: 4px 1px 3px; min-width: 0;
+        background: #1a1a2c; border: 2px solid #2a2a3a; border-radius: 8px;
         font: inherit; color: #f2f2f5; user-select: none;
         -webkit-tap-highlight-color: transparent; touch-action: manipulation;
       }
-      .mdby-card img { width: 36px; height: 36px; object-fit: contain; pointer-events: none; }
-      .mdby-card .mdby-card-name { font-size: 11px; color: #9a9aa5; pointer-events: none; }
+      .mdby-card img { width: 28px; height: 28px; object-fit: contain; pointer-events: none; }
+      .mdby-card .mdby-card-name {
+        font-size: 9px; color: #9a9aa5; pointer-events: none; max-width: 100%;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      }
       .mdby-card.mdby-picked {
         border-color: #abdd64; background: #223018;
         box-shadow: 0 0 10px rgba(171, 221, 100, 0.35);
@@ -151,13 +155,14 @@ function createMarbleDerbyMatchClient(
       .mdby-results .mdby-results-order strong { color: #f2f2f5; font-weight: 700; }
       .mdby-card.mdby-race-winner { border-color: #ffd75e; }
       .mdby-chips {
-        display: flex; flex-wrap: wrap; justify-content: center; gap: 2px;
-        min-height: 14px; pointer-events: none;
+        display: flex; flex-wrap: wrap; justify-content: center; gap: 1px;
+        min-height: 11px; pointer-events: none;
       }
       .mdby-chips img {
-        width: 14px; height: 14px; border-radius: 50%;
+        width: 11px; height: 11px; border-radius: 50%;
         border: 1px solid #2a2a3a; background: #0a0a14;
       }
+      .mdby-results[hidden] { display: none; }
       .mdby-results {
         position: absolute; inset: 0; z-index: 4;
         display: flex; flex-direction: column; align-items: center;
@@ -182,7 +187,7 @@ function createMarbleDerbyMatchClient(
       .mdby-results .mdby-results-scorers { font-size: 13px; color: #f2f2f5; max-width: 90%; }
       .mdby-results .mdby-results-scorers .mdby-none { color: #9a9aa5; }
       .mdby-status {
-        padding: 6px 0 8px; text-align: center; color: #9a9aa5;
+        padding: 3px 0 5px; text-align: center; color: #9a9aa5;
         font-size: 12px; flex: none; user-select: none;
       }
     </style>
@@ -210,7 +215,7 @@ function createMarbleDerbyMatchClient(
   let marbleSprites: MarbleSprite[] = [];
 
   let racers: string[] = [];
-  let totalRaces = 2;
+  let totalRaces = 1;
   let marbleRadius = 13;
   let players: WelcomeMsg["players"] = [];
   const playerById = new Map<string, WelcomeMsg["players"][number]>();
@@ -313,9 +318,7 @@ function createMarbleDerbyMatchClient(
     k = kaplay({
       width: welcome.field.w,
       height: welcome.field.h,
-      // Lifted from near-black — the board looked "darkened" next to the
-      // bright betting cards, as if it were disabled.
-      background: [30, 30, 50],
+      background: [24, 24, 40],
       letterbox: true,
       global: false,
       root: stageEl,
@@ -442,7 +445,7 @@ function createMarbleDerbyMatchClient(
 
     resultsEl.innerHTML = `
       <img class="mdby-results-winner" src="${crewSrc(winnerKey)}" alt="" />
-      <div class="mdby-results-title">${escapeHtml(racerLabel(winnerKey))} wins race ${res.raceIndex + 1}!</div>
+      <div class="mdby-results-title">${escapeHtml(racerLabel(winnerKey))} wins${totalRaces > 1 ? ` race ${res.raceIndex + 1}` : " the race"}!</div>
       ${mineLine}
       <div class="mdby-results-order">${orderLine}</div>
       <div class="mdby-results-scorers">${
@@ -457,6 +460,11 @@ function createMarbleDerbyMatchClient(
   function applyWelcome(msg: WelcomeMsg) {
     statusEl.textContent = "pick your racer!";
     buildScene(msg);
+  }
+
+  /** "race 2/3 · " prefix — omitted entirely for a single-race match. */
+  function raceTag(raceIndex: number): string {
+    return totalRaces > 1 ? `race ${raceIndex + 1}/${totalRaces} · ` : "";
   }
 
   function applyState(msg: StateMsg) {
@@ -493,11 +501,11 @@ function createMarbleDerbyMatchClient(
           : mine !== undefined
             ? `your pick: ${racerLabel(racers[mine] ?? "?")}`
             : "tap a racer to bet";
-      bannerEl.innerHTML = `race ${msg.raceIndex + 1}/${totalRaces} · ${escapeHtml(pickTxt)} · <span class="mdby-count">${secsLeft}s</span> · ${betCount}/${players.length} bets in`;
+      bannerEl.innerHTML = `${raceTag(msg.raceIndex)}${escapeHtml(pickTxt)} · <span class="mdby-count">${secsLeft}s</span> · ${betCount}/${players.length} bets in`;
     } else if (msg.phase === "race") {
-      bannerEl.innerHTML = `race ${msg.raceIndex + 1}/${totalRaces} · they're off!`;
+      bannerEl.innerHTML = `${raceTag(msg.raceIndex)}they're off!`;
     } else {
-      bannerEl.innerHTML = `race ${msg.raceIndex + 1}/${totalRaces} · results · <span class="mdby-count">${secsLeft}s</span>`;
+      bannerEl.innerHTML = `${raceTag(msg.raceIndex)}results · <span class="mdby-count">${secsLeft}s</span>`;
     }
 
     // Betting panel state + revealed-bet chips.
@@ -531,7 +539,8 @@ function createMarbleDerbyMatchClient(
     } else {
       ctx.setMatchScore(null);
     }
-    const clock = formatRemaining(msg.deadlineAt);
+    // No total clock — the banner carries the phase countdown; the race
+    // itself has no fixed length.
     statusEl.textContent = statusLine(
       ctx.isSpectator ? "spectating" : null,
       msg.phase === "betting"
@@ -539,7 +548,6 @@ function createMarbleDerbyMatchClient(
         : msg.phase === "race"
           ? "no touching — watch the marbles"
           : "payouts",
-      clock,
     );
   }
 
@@ -579,7 +587,7 @@ function createMarbleDerbyMatchClient(
 
 const MarbleDerbyClient: MiniGameClientDefinition = {
   id: "marble-derby",
-  controlsHint: "bet on a marble — winner +3, second +1, best of 2 races",
+  controlsHint: "bet on a marble — one race, winner +3, second +1",
   createMatch: createMarbleDerbyMatchClient,
 };
 

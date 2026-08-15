@@ -285,7 +285,7 @@ function createTronArenaMatchClient(
 
 const TronArenaClient: MiniGameClientDefinition = {
   id: "tron-arena",
-  controlsHint: "tap LEFT or RIGHT to turn — look for the YOU tag",
+  controlsHint: "tap LEFT or RIGHT to turn — the white arrow marks your bike at the start",
   createMatch: createTronArenaMatchClient,
 };
 

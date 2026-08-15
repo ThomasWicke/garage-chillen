@@ -6,7 +6,7 @@
 
 import { avatarSrc } from "../../identity";
 import { createMatchFlash, type MatchFlash } from "../flash";
-import { formatRemaining, statusLine } from "../clock";
+import { statusLine } from "../clock";
 import { registerMiniGameClient } from "../registry";
 import type {
   MatchClientContext,
@@ -44,6 +44,7 @@ type StateMsg = {
   roundStartAt: number;
   serverNow: number;
   tappedIds: string[];
+  activeCount?: number;
   totals: Record<string, number>;
   results: RoundRow[] | null;
   deadlineAt: number;
@@ -228,6 +229,7 @@ function createTenSecondsMatchClient(
   let round = 1;
   let roundStartAt = 0;
   let tappedIds = new Set<string>();
+  let activeCount = 0;
   let deadlineAt = 0;
   /** Server-minus-local clock offset (smoothed). All countdown math uses
    *  serverNow() so a skewed phone clock can't freeze or jump the timer. */
@@ -282,10 +284,12 @@ function createTenSecondsMatchClient(
 
   function render() {
     const roundLabel = `round ${Math.min(round, rounds)}/${rounds}`;
-    const clock = deadlineAt > 0 ? formatRemaining(deadlineAt) : "";
+    // No total clock — rounds end as soon as everyone has stopped. The
+    // denominator counts CONNECTED players (the server ends the round when
+    // all of those have tapped), not the original roster.
     const stopped =
-      phase === "counting" ? `${tappedIds.size}/${players.length || ctx.participants.length} stopped` : "";
-    statusEl.textContent = statusLine(roundLabel, stopped, clock);
+      phase === "counting" ? `${tappedIds.size}/${activeCount || players.length || ctx.participants.length} stopped` : "";
+    statusEl.textContent = statusLine(roundLabel, stopped);
 
     const locked = myLocked();
     const showResults = phase === "results";
@@ -389,6 +393,7 @@ function createTenSecondsMatchClient(
     rounds = msg.rounds ?? rounds;
     roundStartAt = msg.roundStartAt;
     tappedIds = new Set(msg.tappedIds ?? []);
+    activeCount = msg.activeCount ?? 0;
     deadlineAt = msg.deadlineAt ?? deadlineAt;
 
     if (isParticipant) {

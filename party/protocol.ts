@@ -23,6 +23,64 @@ export type PublicPlayer = {
   bot?: BotStrategy;
 };
 
+// ─── lobby settings (host-editable) ────────────────────────────────────────
+
+/**
+ * How the pre-match instruction is presented.
+ *   fast   — 3s warm-up over the live scene with the hint + 3-2-1-GO (default)
+ *   slow   — same, 7s
+ *   paused — the intro screen (roster/bracket + hint) is HELD until the host
+ *            taps START; then the normal 3s warm-up. For explaining rules to
+ *            new players at whatever pace the room needs.
+ */
+export type TutorialStyle = "fast" | "slow" | "paused";
+export const TUTORIAL_STYLES: readonly TutorialStyle[] = ["fast", "slow", "paused"];
+
+/** Shuffle weight steps offered in the settings UI (0 = never). */
+export const SHUFFLE_WEIGHT_MAX = 5;
+
+export type LobbySettings = {
+  /** Per-mini-game Shuffle weight OVERRIDES: 0 = excluded, 1..MAX = copies
+   *  in the pool. A missing id means "the game's default" (see
+   *  `effectiveShuffleWeight`). */
+  shuffleWeights: Record<string, number>;
+  tutorial: TutorialStyle;
+};
+
+export const DEFAULT_LOBBY_SETTINGS: LobbySettings = {
+  shuffleWeights: {},
+  tutorial: "fast",
+};
+
+/** The Shuffle weight a game actually gets: host override, else its own
+ *  default — and archived games default to 0. Shared by client and server so
+ *  the "Shuffle" button and the actual pool always agree. */
+export function effectiveShuffleWeight(
+  m: { id: string; shuffleWeight: number; archived: boolean },
+  settings: LobbySettings,
+): number {
+  const override = settings.shuffleWeights[m.id];
+  if (typeof override === "number") return Math.max(0, Math.min(SHUFFLE_WEIGHT_MAX, override));
+  return m.archived ? 0 : Math.max(0, m.shuffleWeight);
+}
+
+/** Server → client: current lobby settings (on identify and on change).
+ *  `custom` is false while the room still runs on defaults — the host's
+ *  client uses that to push its remembered settings once. */
+export type LobbySettingsMsg = {
+  scope: "lobby";
+  type: "settings";
+  settings: LobbySettings;
+  custom: boolean;
+};
+
+/** Host → server: partial update (merged server-side). */
+export type SetSettingsMsg = {
+  scope: "lobby";
+  type: "set-settings";
+  settings: Partial<LobbySettings>;
+};
+
 // ─── test lobbies ──────────────────────────────────────────────────────────
 //
 // A lobby whose code starts with "TEST" is a test lobby: the GM can add
@@ -267,6 +325,7 @@ export type ClientToServer =
   | PauseSequenceMsg
   | ResumeSequenceMsg
   | EndSequenceMsg
+  | SetSettingsMsg
   | TestControlMsg
   | MiniGameMsg;
 
@@ -276,6 +335,7 @@ export type ServerToClient =
   | EditRejectedMsg
   | AvailableMiniGamesMsg
   | SessionStateMsg
+  | LobbySettingsMsg
   | TestStateMsg
   | LobbyStateMsg
   | MiniGameMsg;

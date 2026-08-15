@@ -10,7 +10,7 @@ import { avatarSrc } from "../../identity";
 
 // Crew "kaboom" cloud for the pop burst — keeps the art in the kaplay family.
 const KABOOM_SRC = kaboomData.kind === "Sprite" ? kaboomData.outlined : "";
-import { formatRemaining, statusLine } from "../clock";
+import { statusLine } from "../clock";
 import { registerMiniGameClient } from "../registry";
 import type {
   MatchClientContext,
@@ -309,19 +309,19 @@ function createBalloonPumpMatchClient(
     }
 
     // --- Banner / toolbar ---
-    const clock = formatRemaining(msg.deadlineAt);
+    // No total clock: rounds end early once everyone banked/popped, so the
+    // only honest countdown is the per-round one. (The deadline is a
+    // safety net a few seconds past the 3-round maximum, never the end.)
     if (results) {
       bannerEl.textContent = statusLine(
         `round ${msg.round}/${rounds} over`,
         msg.round >= rounds ? "final results…" : "next round…",
-        clock,
       );
     } else {
       const secs = Math.max(0, Math.ceil((msg.roundEndsAt - now) / 1000));
       bannerEl.textContent = statusLine(
         `round ${msg.round}/${rounds}`,
         `${secs}s`,
-        clock,
       );
     }
     ctx.setMatchScore(me ? `${me.total} pts` : "spectating");

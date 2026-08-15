@@ -21,8 +21,14 @@ import type {
 } from "./gamemodes/types";
 import {
   BOT_STRATEGIES,
+  DEFAULT_LOBBY_SETTINGS,
+  SHUFFLE_WEIGHT_MAX,
+  TUTORIAL_STYLES,
+  effectiveShuffleWeight,
   isTestLobbyCode,
   type AvailableMiniGamesMsg,
+  type LobbySettings,
+  type LobbySettingsMsg,
   type ClientToServer,
   type EditRejectedMsg,
   type IdentifyMsg,
@@ -35,6 +41,7 @@ import {
   type SequencePublicState,
   type ServerToClient,
   type SessionStateMsg,
+  type SetSettingsMsg,
   type TestControlMsg,
   type TestStateMsg,
   type WelcomeMsg,
@@ -98,6 +105,14 @@ export default class LobbyServer implements Party.Server {
   private resultsDismissAt: number = 0;
   private sessionScores: Record<string, number> = {};
   private sequence: SequenceState | null = null;
+
+  /** Host-editable lobby settings (room memory only — the host's client
+   *  remembers its own and re-applies them to a fresh room). */
+  private settings: LobbySettings = {
+    shuffleWeights: {},
+    tutorial: DEFAULT_LOBBY_SETTINGS.tutorial,
+  };
+  private settingsCustom = false;
 
   // ─── test lobby (code starts with TEST) ──────────────────────────────────
   private readonly testMode: boolean;
@@ -202,6 +217,9 @@ export default class LobbyServer implements Party.Server {
       } else if (msg.type === "test") {
         if (!isGm || !this.testMode) return;
         this.handleTestControl(msg);
+      } else if (msg.type === "set-settings") {
+        if (!isGm) return;
+        this.applySettings(msg);
       }
       return;
     }
@@ -215,10 +233,57 @@ export default class LobbyServer implements Party.Server {
         // Test bots shadow the humans' match inputs (see bots.ts).
         if (this.testMode) this.bots.onHumanMatchMessage(msg.matchId, msg);
       } else if (msg.target === "gamemode") {
+        if (msg.type === "tutorial-start") {
+          // Tutorial style "paused": only the host releases the held intro.
+          if (player.playerId === this.gmPlayerId) {
+            this.active.session.startNow?.();
+          }
+          return;
+        }
         this.active.session.onGamemodeMessage?.(player.playerId, msg);
       }
       return;
     }
+  }
+
+  // ─── lobby settings ──────────────────────────────────────────────────────
+
+  private applySettings(msg: SetSettingsMsg) {
+    const incoming = msg.settings;
+    if (!incoming || typeof incoming !== "object") return;
+    if (incoming.shuffleWeights && typeof incoming.shuffleWeights === "object") {
+      const next: Record<string, number> = {};
+      for (const [id, w] of Object.entries(incoming.shuffleWeights)) {
+        if (!getMiniGame(id)) continue;
+        if (typeof w !== "number" || !Number.isFinite(w)) continue;
+        next[id] = Math.max(0, Math.min(SHUFFLE_WEIGHT_MAX, Math.round(w)));
+      }
+      this.settings.shuffleWeights = next;
+    }
+    if (
+      typeof incoming.tutorial === "string" &&
+      TUTORIAL_STYLES.includes(incoming.tutorial)
+    ) {
+      this.settings.tutorial = incoming.tutorial;
+    }
+    this.settingsCustom = true;
+    this.broadcastSettings();
+  }
+
+  private buildSettingsMsg(): LobbySettingsMsg {
+    return {
+      scope: "lobby",
+      type: "settings",
+      settings: {
+        shuffleWeights: { ...this.settings.shuffleWeights },
+        tutorial: this.settings.tutorial,
+      },
+      custom: this.settingsCustom,
+    };
+  }
+
+  private broadcastSettings() {
+    this.room.broadcast(JSON.stringify(this.buildSettingsMsg()));
   }
 
   // ─── test lobby controls ─────────────────────────────────────────────────
@@ -381,6 +446,7 @@ export default class LobbyServer implements Party.Server {
       scores: this.sessionScores,
     });
     if (this.testMode) this.send<TestStateMsg>(sender, this.buildTestStateMsg());
+    this.send<LobbySettingsMsg>(sender, this.buildSettingsMsg());
     // Player list BEFORE lobby state: on a "playing" state the client
     // immediately mounts the gamemode scene from its current player list —
     // if that list is still empty (mid-round refresh / late join), every
@@ -540,6 +606,8 @@ export default class LobbyServer implements Party.Server {
       log: (...args) =>
         console.log(`[${gm.id}/${def.id}]`, ...args),
       ...(this.testMode ? { test: { fast: this.testFast } } : {}),
+      settings: { tutorial: this.settings.tutorial },
+      isGm: (pid) => pid === this.gmPlayerId,
     };
 
     const session = gm.createSession(ctx);
@@ -656,16 +724,18 @@ export default class LobbyServer implements Party.Server {
     if (this.state !== "idle") return;
     if (this.sequence) return; // already running
     const lobbyN = this.lobbyPlayersForMinigame().length;
-    const eligible = allMiniGames().filter(
-      (m) => !m.archived && m.minPlayers <= lobbyN && lobbyN <= m.maxPlayers,
-    );
-    if (eligible.length === 0) return;
-
+    // Host settings decide inclusion + frequency (archived games default to
+    // 0 but can be switched on); the player-count range still applies.
     const pool: string[] = [];
-    for (const m of eligible) {
-      const w = Math.max(1, m.shuffleWeight ?? 1);
+    for (const m of allMiniGames()) {
+      if (m.minPlayers > lobbyN || lobbyN > m.maxPlayers) continue;
+      const w = effectiveShuffleWeight(
+        { id: m.id, shuffleWeight: m.shuffleWeight ?? 1, archived: m.archived ?? false },
+        this.settings,
+      );
       for (let i = 0; i < w; i++) pool.push(m.id);
     }
+    if (pool.length === 0) return;
     shuffleInPlace(pool);
 
     // Fresh run = fresh standings. Without this the finale podium

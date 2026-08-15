@@ -1,5 +1,6 @@
-// Snake Duel match client. Renders a portrait grid; the local player's
-// snake is lime, opponent is sky-blue, food is pale red. Per-role view
+// Snake Duel match client. Renders a portrait grid; p1's snake is lime,
+// p2's is sky-blue (canonical colors, same for everyone), food is pale
+// red. Per-role view
 // flip for p1 (their snake at the bottom of their phone). Inputs: swipe
 // gestures translate to up/down/left/right.
 

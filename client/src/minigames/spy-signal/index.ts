@@ -67,6 +67,8 @@ type StateMsg = {
   candidates: string[];
   phaseEndsAt: number;
   deadlineAt: number;
+  /** Server time when the whole match ends (all phases chained from GO). */
+  endsAt?: number;
   points: Record<string, number>;
   votedIds: string[];
   connected: string[];
@@ -547,10 +549,12 @@ function createSignalImposterMatchClient(
       0,
       Math.ceil((msg.phaseEndsAt - Date.now()) / 1000),
     );
+    // Clock counts to the REAL end (peek+discuss+vote+reveal, chained from
+    // GO) — not the safety-net deadline, which used to read a minute long.
     statusEl.textContent = statusLine(
       "signal imposter",
       msg.phase,
-      formatRemaining(msg.deadlineAt),
+      formatRemaining(msg.endsAt ?? msg.deadlineAt),
     );
 
     if (amParticipant) {
@@ -667,7 +671,7 @@ function createSignalImposterMatchClient(
 const SignalImposterClient: MiniGameClientDefinition = {
   id: "spy-signal",
   controlsHint:
-    "everyone sees the signal except the imposter — talk it out, then vote!",
+    "everyone sees the signal except the imposter — talk it out, then vote (the imposter guesses the signal instead)",
   createMatch: createSignalImposterMatchClient,
 };
 

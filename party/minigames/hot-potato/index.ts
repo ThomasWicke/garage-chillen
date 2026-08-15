@@ -19,7 +19,9 @@ const MAX_TIMER_MS = 9_000;
 const PASS_ARM_MS = 600;
 /** Brief pause after each elimination before the next holder is picked. */
 const ELIM_PAUSE_MS = 1_500;
-const HP_MATCH_TIMEOUT_MS = 120_000;
+/** (N-1) eliminations × ~5.5-10.5s: a full 16-lobby needs ~2 min on
+ *  average, so 120s was routinely cutting big lobbies off. */
+const HP_MATCH_TIMEOUT_MS = 180_000;
 
 type Phase = "live" | "elim-pause" | "ended";
 
@@ -165,7 +167,7 @@ function createHotPotatoMatch(ctx: MatchContext): MatchSession {
     ctx.endMatch({
       winnerId,
       placements,
-      summary: "time's up",
+      summary: `time's up · ${state.alivePlayers.size} survivors (coinflip)`,
     });
   }
 

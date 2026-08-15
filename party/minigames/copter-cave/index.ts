@@ -306,7 +306,7 @@ function createCopterCaveMatch(ctx: MatchContext): MatchSession {
       summary: winnerNick
         ? `${winnerNick} flies out alive`
         : topIds.length > 1
-          ? "double crash · tie"
+          ? `${topIds.length}-way crash · tie`
           : "everyone crashed",
     });
   }

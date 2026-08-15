@@ -19,7 +19,8 @@ import type {
 const OOO_ROUNDS = 10;
 const ROUND_MS = 10_000;
 const REVEAL_MS = 1_200;
-const OOO_MATCH_TIMEOUT_MS = 150_000;
+/** 10 × (10s + 1.2s) = 112s max; safety net just above. */
+const OOO_MATCH_TIMEOUT_MS = 125_000;
 const WIN_POINTS = 3;
 
 /** Grid side length per round (1-based index into this array). */

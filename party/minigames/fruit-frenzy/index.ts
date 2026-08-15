@@ -2,7 +2,7 @@
 // fruits (and the occasional bomb) from the bottom of a shared 500×800
 // portrait field; they rise, arc, and fall under a simple ballistic sim
 // integrated in tick (30 Hz). Everyone sees the SAME entities — the first
-// player to tap a fruit claims it (+1). Tapping a bomb costs 3 points
+// player to tap a fruit claims it (+1). Tapping a bomb costs 5 points
 // (floored at 0) and stuns the tapper for 1.5s (their taps are ignored).
 // Highest score when the 45s clock runs out wins; score ties share a rank.
 //
@@ -198,8 +198,8 @@ function createFruitFrenzyMatch(ctx: MatchContext): MatchSession {
     const scoresObj: Record<string, number> = {};
     for (const [pid, s] of state.scores) scoresObj[pid] = s;
     const summary = winnerId
-      ? `${reasonPrefix}${players.find((p) => p.playerId === winnerId)?.nickname ?? "?"} wins · ${state.scores.get(winnerId) ?? 0} fruits`
-      : `${reasonPrefix}tie at ${state.scores.get(topIds[0]) ?? 0} fruits`;
+      ? `${reasonPrefix}${players.find((p) => p.playerId === winnerId)?.nickname ?? "?"} wins · ${state.scores.get(winnerId) ?? 0} pts`
+      : `${reasonPrefix}tie at ${state.scores.get(topIds[0]) ?? 0} pts`;
     broadcastState();
     ctx.endMatch({ winnerId, placements, scores: scoresObj, summary });
   }
